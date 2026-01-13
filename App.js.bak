@@ -37,7 +37,6 @@ function MotoristaStack({ onLogin }) {
 }
 
 export default function App() {
-  const mostrarReset = false;
   const [tipoApp, setTipoApp] = useState(null); // 'passageiro' ou 'motorista'
   const [usuario, setUsuario] = useState(null);
   const [carregando, setCarregando] = useState(true);
@@ -145,11 +144,9 @@ export default function App() {
           ) : (
             <PassageiroStack onLogin={handleLoginPassageiro} />
           )}
-          {mostrarReset && (
-            <TouchableOpacity style={styles.botaoResetar} onPress={resetarApp}>
-              <Text style={styles.botaoResetarText}>↻</Text>
-            </TouchableOpacity>
-          )}
+          <TouchableOpacity style={styles.botaoResetar} onPress={resetarApp}>
+            <Text style={styles.botaoResetarText}>↻</Text>
+          </TouchableOpacity>
         </View>
       </NavigationContainer>
     );
@@ -165,11 +162,9 @@ export default function App() {
           ) : (
             <MotoristaStack onLogin={handleLoginMotorista} />
           )}
-          {mostrarReset && (
-            <TouchableOpacity style={styles.botaoResetar} onPress={resetarApp}>
-              <Text style={styles.botaoResetarText}>↻</Text>
-            </TouchableOpacity>
-          )}
+          <TouchableOpacity style={styles.botaoResetar} onPress={resetarApp}>
+            <Text style={styles.botaoResetarText}>↻</Text>
+          </TouchableOpacity>
         </View>
       </NavigationContainer>
     );
