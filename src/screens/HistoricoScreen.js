@@ -120,7 +120,7 @@ export default function HistoricoScreen({ usuario, isMotorista: isMotoristaProp 
         {item.comentarioAvaliacao ? (
           <View style={styles.avaliacaoRow}>
             <Text style={styles.avaliacaoLabel}>Comentario:</Text>
-            <Text style={styles.avaliacaoComentario} numberOfLines={2}>
+            <Text style={styles.avaliacaoComentario}>
               {item.comentarioAvaliacao}
             </Text>
           </View>
