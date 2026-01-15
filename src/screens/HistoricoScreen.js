@@ -117,6 +117,14 @@ export default function HistoricoScreen({ usuario, isMotorista: isMotoristaProp 
             <Text style={styles.avaliacaoValor}>{item.avaliacao}★</Text>
           </View>
         ) : null}
+        {item.comentarioAvaliacao ? (
+          <View style={styles.avaliacaoRow}>
+            <Text style={styles.avaliacaoLabel}>Comentario:</Text>
+            <Text style={styles.avaliacaoComentario} numberOfLines={2}>
+              {item.comentarioAvaliacao}
+            </Text>
+          </View>
+        ) : null}
 
         {item.motorista && (
           <View style={styles.motoristaInfo}>
@@ -194,6 +202,7 @@ const styles = StyleSheet.create({
   avaliacaoRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   avaliacaoLabel: { fontSize: 12, color: '#94a3b8' },
   avaliacaoValor: { fontSize: 12, color: '#fbbf24', fontWeight: '700' },
+  avaliacaoComentario: { flex: 1, fontSize: 12, color: '#e2e8f0' },
   corridaId: { fontSize: 10, color: '#64748b', fontFamily: 'monospace' },
   emptyContainer: { alignItems: 'center', justifyContent: 'center', paddingVertical: 60 },
   emptyIcon: { fontSize: 32, marginBottom: 12, color: '#94a3b8' },
