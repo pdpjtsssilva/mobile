@@ -227,6 +227,7 @@ export default function MapaScreen({ usuario, onLogout, onAtualizarUsuario }) {
   };
 
   const solicitarCorrida = async () => {
+    console.log('Solicitar corrida: clique recebido');
     if (!location) {
       Alert.alert('Atencao', 'Aguardando sua localizacao');
       return;
@@ -261,6 +262,7 @@ export default function MapaScreen({ usuario, onLogout, onAtualizarUsuario }) {
         destinoEndereco: response.data.destinoEndereco || destinoEndereco || 'Destino',
         preco
       });
+      console.log('Corrida solicitada com sucesso:', response.data.id);
       Alert.alert('Corrida solicitada', 'Procurando motoristas proximos...');
     } catch (error) {
       console.error('Erro ao solicitar corrida:', error);
