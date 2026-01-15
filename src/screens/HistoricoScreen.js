@@ -111,6 +111,12 @@ export default function HistoricoScreen({ usuario, isMotorista: isMotoristaProp 
             <Text style={styles.precoValor}>R$ {(item.preco || 0).toFixed(2)}</Text>
           </View>
         </View>
+        {item.avaliacao ? (
+          <View style={styles.avaliacaoRow}>
+            <Text style={styles.avaliacaoLabel}>Avaliacao:</Text>
+            <Text style={styles.avaliacaoValor}>{item.avaliacao}★</Text>
+          </View>
+        ) : null}
 
         {item.motorista && (
           <View style={styles.motoristaInfo}>
@@ -185,6 +191,9 @@ const styles = StyleSheet.create({
   motoristaInfo: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   motoristaLabel: { fontSize: 12, color: '#94a3b8' },
   motoristaNome: { fontSize: 12, color: '#e2e8f0', fontWeight: '600' },
+  avaliacaoRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  avaliacaoLabel: { fontSize: 12, color: '#94a3b8' },
+  avaliacaoValor: { fontSize: 12, color: '#fbbf24', fontWeight: '700' },
   corridaId: { fontSize: 10, color: '#64748b', fontFamily: 'monospace' },
   emptyContainer: { alignItems: 'center', justifyContent: 'center', paddingVertical: 60 },
   emptyIcon: { fontSize: 32, marginBottom: 12, color: '#94a3b8' },
