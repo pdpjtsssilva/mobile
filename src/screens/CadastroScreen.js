@@ -12,9 +12,9 @@ import {
 } from 'react-native';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { API_URL } from '../config';
+import { API_URL, SIGNUP_TOKEN } from '../config';
 
-export default function CadastroScreen({ navigation, onLogin }) {
+export default function CadastroScreen({ navigation, onLogin, tipoCadastro = 'passageiro' }) {
   const [nome, setNome] = useState('');
   const [email, setEmail] = useState('');
   const [telefone, setTelefone] = useState('');
@@ -40,13 +40,20 @@ export default function CadastroScreen({ navigation, onLogin }) {
 
     setLoading(true);
     try {
-      const response = await axios.post(`${API_URL}/auth/cadastro`, {
-        nome,
-        email,
-        telefone,
-        senha,
-        tipo: 'passageiro'
-      });
+      const response = await axios.post(
+        `${API_URL}/auth/cadastro`,
+        {
+          nome,
+          email,
+          telefone,
+          senha,
+          tipo: tipoCadastro,
+          signupToken: SIGNUP_TOKEN
+        },
+        {
+          headers: SIGNUP_TOKEN ? { 'x-signup-token': SIGNUP_TOKEN } : {}
+        }
+      );
 
       // Salvar token e dados do usuário
       await AsyncStorage.setItem('token', response.data.token);

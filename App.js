@@ -14,10 +14,10 @@ function PassageiroStack({ onLogin }) {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="Login">
-        {(props) => <LoginScreen {...props} onLogin={onLogin} />}
+        {(props) => <LoginScreen {...props} onLogin={onLogin} cadastroRoute="Cadastro" />}
       </Stack.Screen>
       <Stack.Screen name="Cadastro">
-        {(props) => <CadastroScreen {...props} onLogin={onLogin} />}
+        {(props) => <CadastroScreen {...props} onLogin={onLogin} tipoCadastro="passageiro" />}
       </Stack.Screen>
     </Stack.Navigator>
   );
@@ -27,10 +27,10 @@ function MotoristaStack({ onLogin }) {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="LoginMotorista">
-        {(props) => <LoginScreen {...props} onLogin={onLogin} />}
+        {(props) => <LoginScreen {...props} onLogin={onLogin} cadastroRoute="CadastroMotorista" />}
       </Stack.Screen>
       <Stack.Screen name="CadastroMotorista">
-        {(props) => <CadastroScreen {...props} onLogin={onLogin} />}
+        {(props) => <CadastroScreen {...props} onLogin={onLogin} tipoCadastro="motorista" />}
       </Stack.Screen>
     </Stack.Navigator>
   );
@@ -80,8 +80,8 @@ export default function App() {
 
   const handleLogout = async () => {
     setUsuario(null);
-    await AsyncStorage.removeItem('usuario');
-    await AsyncStorage.removeItem('token');
+    setTipoApp(null);
+    await AsyncStorage.multiRemove(['usuario', 'token', 'tipoApp']);
   };
 
   const resetarApp = async () => {

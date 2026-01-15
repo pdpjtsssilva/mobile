@@ -39,6 +39,18 @@ export default function PerfilScreen({ usuario, onLogout, onAtualizar }) {
   const [docFrente, setDocFrente] = useState(usuario?.cnhFrenteUri || usuario?.docFrenteUri || null);
   const [docVerso, setDocVerso] = useState(usuario?.cnhVersoUri || usuario?.docVersoUri || null);
   const [cnhStatus, setCnhStatus] = useState(usuario?.cnhStatus || 'pendente');
+  const resolveDocUri = (uri) => {
+    if (!uri) return null;
+    if (uri.startsWith('http') || uri.startsWith('file:') || uri.startsWith('content:')) return uri;
+    return `${API_URL.replace('/api', '')}${uri}`;
+  };
+  const limparDocumentosCnh = async () => {
+    await AsyncStorage.removeItem(`cnh_${usuario?.id}`);
+    setDocFrente(null);
+    setDocVerso(null);
+    setCnhStatus('pendente');
+    Alert.alert('CNH', 'Documentos limpos. Envie novamente e toque em Confirmar.');
+  };
 
   // Garantir que o estado inicial reflita dados persistidos do usuário
   useEffect(() => {
@@ -110,10 +122,10 @@ export default function PerfilScreen({ usuario, onLogout, onAtualizar }) {
       let cnhUpload = {};
       if (isMotorista && (docFrente || docVerso)) {
         const formData = new FormData();
-        if (docFrente && !docFrente.startsWith('http')) {
+        if (docFrente && (docFrente.startsWith('file:') || docFrente.startsWith('content:'))) {
           formData.append('cnhFrente', { uri: docFrente, name: 'cnh_frente.jpg', type: 'image/jpeg' });
         }
-        if (docVerso && !docVerso.startsWith('http')) {
+        if (docVerso && (docVerso.startsWith('file:') || docVerso.startsWith('content:'))) {
           formData.append('cnhVerso', { uri: docVerso, name: 'cnh_verso.jpg', type: 'image/jpeg' });
         }
         try {
@@ -300,17 +312,23 @@ export default function PerfilScreen({ usuario, onLogout, onAtualizar }) {
                   <Text style={styles.docUploadText}>{docVerso ? 'Trocar Verso' : 'Adicionar Verso'}</Text>
                 </TouchableOpacity>
               </View>
+              <View style={{ marginTop: 8 }}>
+                <TouchableOpacity style={styles.docResetBtn} onPress={limparDocumentosCnh}>
+                  <Text style={styles.docResetText}>Reenviar CNH</Text>
+                </TouchableOpacity>
+              </View>
               {(docFrente || docVerso) && (
                 <View style={styles.docPreviewRow}>
                   {docFrente && (
                     <TouchableOpacity
                       onPress={() => {
-                        const fullUri = docFrente.startsWith('http') ? docFrente : `${API_URL.replace('/api', '')}${docFrente}`;
+                        const fullUri = resolveDocUri(docFrente);
+                        if (!fullUri) return;
                         Linking.openURL(fullUri);
                       }}
                     >
                       <Image
-                        source={{ uri: docFrente.startsWith('http') ? docFrente : `${API_URL.replace('/api', '')}${docFrente}` }}
+                        source={{ uri: resolveDocUri(docFrente) }}
                         style={styles.docPreview}
                       />
                     </TouchableOpacity>
@@ -318,12 +336,13 @@ export default function PerfilScreen({ usuario, onLogout, onAtualizar }) {
                   {docVerso && (
                     <TouchableOpacity
                       onPress={() => {
-                        const fullUri = docVerso.startsWith('http') ? docVerso : `${API_URL.replace('/api', '')}${docVerso}`;
+                        const fullUri = resolveDocUri(docVerso);
+                        if (!fullUri) return;
                         Linking.openURL(fullUri);
                       }}
                     >
                       <Image
-                        source={{ uri: docVerso.startsWith('http') ? docVerso : `${API_URL.replace('/api', '')}${docVerso}` }}
+                        source={{ uri: resolveDocUri(docVerso) }}
                         style={styles.docPreview}
                       />
                     </TouchableOpacity>
@@ -673,6 +692,8 @@ const styles = StyleSheet.create({
   docUploads: { flexDirection: 'row', gap: 10, marginTop: 10 },
   docUploadBtn: { flex: 1, backgroundColor: '#e2e8f0', paddingVertical: 10, borderRadius: 8, alignItems: 'center' },
   docUploadText: { color: '#0f172a', fontWeight: '700' },
+  docResetBtn: { backgroundColor: '#ef4444', paddingVertical: 10, borderRadius: 8, alignItems: 'center' },
+  docResetText: { color: 'white', fontWeight: '700' },
   docPreviewRow: { flexDirection: 'row', gap: 10, marginTop: 10 },
   docPreview: { width: 120, height: 80, borderRadius: 8, backgroundColor: '#e2e8f0' },
   botaoSalvarGrande: { marginTop: 20, backgroundColor: '#0f172a', padding: 14, borderRadius: 10, alignItems: 'center' },

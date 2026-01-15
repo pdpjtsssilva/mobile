@@ -6,6 +6,7 @@ import axios from 'axios';
 import websocketService from '../services/websocket';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import HistoricoScreen from './HistoricoScreen';
+import AvaliacaoScreen from './AvaliacaoScreen';
 import PerfilScreen from './PerfilScreen';
 import ConfigScreen from './ConfigScreen';
 import PagamentoScreen from './PagamentoScreen';
@@ -20,6 +21,7 @@ export default function MapaScreen({ usuario, onLogout, onAtualizarUsuario }) {
   const [distancia, setDistancia] = useState(0);
   const [preco, setPreco] = useState(0);
   const [corridaAtual, setCorridaAtual] = useState(null);
+  const corridaAtualRef = useRef(null);
   const [favoritos, setFavoritos] = useState([]);
   const [mostrarHistorico, setMostrarHistorico] = useState(false);
   const [mostrarPerfil, setMostrarPerfil] = useState(false);
@@ -29,6 +31,8 @@ export default function MapaScreen({ usuario, onLogout, onAtualizarUsuario }) {
   const [mostrarCarteiraPassageiro, setMostrarCarteiraPassageiro] = useState(false);
   const [mostrarTermos, setMostrarTermos] = useState(false);
   const [mostrarMenu, setMostrarMenu] = useState(false);
+  const [mostrarAvaliacao, setMostrarAvaliacao] = useState(false);
+  const [corridaParaAvaliar, setCorridaParaAvaliar] = useState(null);
   const [websocketConectado, setWebsocketConectado] = useState(false);
   const [aguardandoMotorista, setAguardandoMotorista] = useState(false);
   const [enderecoBusca, setEnderecoBusca] = useState('');
@@ -42,6 +46,10 @@ export default function MapaScreen({ usuario, onLogout, onAtualizarUsuario }) {
     conectarWebSocket();
     return () => websocketService.disconnect();
   }, []);
+
+  useEffect(() => {
+    corridaAtualRef.current = corridaAtual;
+  }, [corridaAtual]);
 
   const conectarWebSocket = () => {
     websocketService.connect();
@@ -69,6 +77,11 @@ export default function MapaScreen({ usuario, onLogout, onAtualizarUsuario }) {
       setAguardandoMotorista(false);
     });
     websocketService.onCorridaFinalizada(() => {
+      const finalizada = corridaAtualRef.current;
+      if (finalizada?.id) {
+        setCorridaParaAvaliar(finalizada);
+        setMostrarAvaliacao(true);
+      }
       setCorridaAtual(null);
       setDestino(null);
       setRota([]);
@@ -555,6 +568,19 @@ export default function MapaScreen({ usuario, onLogout, onAtualizarUsuario }) {
           </View>
         </View>
       </Modal>
+
+      <AvaliacaoScreen
+        corrida={corridaParaAvaliar}
+        visible={mostrarAvaliacao}
+        onClose={() => {
+          setMostrarAvaliacao(false);
+          setCorridaParaAvaliar(null);
+        }}
+        onAvaliacaoEnviada={() => {
+          setMostrarAvaliacao(false);
+          setCorridaParaAvaliar(null);
+        }}
+      />
     </View>
   );
 }

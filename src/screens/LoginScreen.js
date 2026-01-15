@@ -13,7 +13,7 @@ import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_URL } from '../config';
 
-export default function LoginScreen({ navigation, onLogin }) {
+export default function LoginScreen({ navigation, onLogin, cadastroRoute }) {
   const [email, setEmail] = useState('');
   const [senha, setSenha] = useState('');
   const [loading, setLoading] = useState(false);
@@ -85,7 +85,10 @@ export default function LoginScreen({ navigation, onLogin }) {
 
         <TouchableOpacity 
           style={styles.linkButton}
-          onPress={() => navigation.navigate('Cadastro')}
+          onPress={() => {
+            const target = cadastroRoute || 'Cadastro';
+            navigation.navigate(target);
+          }}
         >
           <Text style={styles.linkText}>
             Não tem conta? <Text style={styles.linkTextBold}>Cadastre-se</Text>
