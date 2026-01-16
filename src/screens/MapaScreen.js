@@ -88,6 +88,13 @@ export default function MapaScreen({ usuario, onLogout, onAtualizarUsuario }) {
       }));
       Alert.alert('Motorista encontrado', `${data.motoristaNome} aceitou sua corrida!`);
     });
+    websocketService.onCorridaRecusada((data) => {
+      const atual = corridaAtualRef.current;
+      if (!atual || atual.id !== data.corridaId) return;
+      setCorridaAtual((prev) => (prev ? { ...prev, status: 'aguardando', motoristaId: null, motoristaNome: null } : prev));
+      setAguardandoMotorista(true);
+      Alert.alert('Motorista recusou', 'Estamos buscando outro motorista...');
+    });
     websocketService.onMotoristaChegou(() => {
       setCorridaAtual((prev) => (prev ? { ...prev, status: 'chegou' } : prev));
     });

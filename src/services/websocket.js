@@ -115,6 +115,12 @@ class WebSocketService {
     this.socket.on('corrida:finalizada', callback);
   }
 
+  onCorridaRecusada(callback) {
+    if (!this.socket) return;
+    console.log('Ouvindo evento: corrida:recusada');
+    this.socket.on('corrida:recusada', callback);
+  }
+
   onCorridaCancelada(callback) {
     if (!this.socket) return;
     console.log('Ouvindo evento: corrida:cancelada');
@@ -144,6 +150,12 @@ class WebSocketService {
     if (!this.socket) return;
     console.log('Emitindo: motorista:aceitarCorrida', data);
     this.socket.emit('motorista:aceitarCorrida', data);
+  }
+
+  recusarCorrida(data) {
+    if (!this.socket) return;
+    console.log('Emitindo: motorista:recusarCorrida', data);
+    this.socket.emit('motorista:recusarCorrida', data);
   }
 
   motoristaChegouOrigem(data) {

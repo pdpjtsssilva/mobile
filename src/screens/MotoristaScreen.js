@@ -336,7 +336,15 @@ export default function MotoristaScreen({ usuario, onLogout }) {
     setRotaMotorista([]);
   };
 
-  const recusarCorrida = () => setSolicitacao(null);
+  const recusarCorrida = () => {
+    if (solicitacao?.corridaId) {
+      websocketService.recusarCorrida({
+        corridaId: solicitacao.corridaId,
+        motoristaId: motoristaIdRef.current
+      });
+    }
+    setSolicitacao(null);
+  };
 
   const notificarAlteracaoVeiculo = async (acao, payload) => {
     try {
