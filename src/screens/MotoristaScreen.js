@@ -271,6 +271,7 @@ export default function MotoristaScreen({ usuario, onLogout }) {
     setSolicitacao(null);
     setCorridaConfirmada(null);
     setRotaMotorista([]);
+    websocketService.disconnect();
   };
 
   const aceitarCorrida = () => {
