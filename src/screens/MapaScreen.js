@@ -40,6 +40,12 @@ export default function MapaScreen({ usuario, onLogout, onAtualizarUsuario }) {
   const [buscando, setBuscando] = useState(false);
   const mapRef = useRef(null);
   const pollingRef = useRef(null);
+  const calcularTempoEstimado = (distanciaKm, tempoServer) => {
+    if (tempoServer && tempoServer > 0) return tempoServer;
+    if (!distanciaKm || distanciaKm <= 0) return 0;
+    const minutos = (distanciaKm / 30) * 60; // fallback: 30 km/h
+    return Math.max(1, Math.ceil(minutos));
+  };
 
   const limparEstadoCorrida = () => {
     setCorridaAtual(null);
@@ -482,7 +488,9 @@ export default function MapaScreen({ usuario, onLogout, onAtualizarUsuario }) {
               <Text style={styles.motoristaNome}>Motorista: {corridaAtual.motoristaNome}</Text>
               <View style={styles.corridaInfo}>
                 <Text style={styles.corridaInfoText}>{(corridaAtual.distancia || 0).toFixed(1)} km</Text>
-                <Text style={styles.corridaInfoText}>{Math.ceil((corridaAtual.tempoEstimado || 0))} min</Text>
+                <Text style={styles.corridaInfoText}>
+                  {calcularTempoEstimado(corridaAtual.distancia || 0, corridaAtual.tempoEstimado)} min
+                </Text>
               </View>
             </>
           )}
