@@ -39,6 +39,19 @@ export default function MapaScreen({ usuario, onLogout, onAtualizarUsuario }) {
   const [sugestoes, setSugestoes] = useState([]);
   const [buscando, setBuscando] = useState(false);
   const mapRef = useRef(null);
+  const pollingRef = useRef(null);
+
+  const limparEstadoCorrida = () => {
+    setCorridaAtual(null);
+    setDestino(null);
+    setDestinoEndereco('');
+    setRota([]);
+    setDistancia(0);
+    setPreco(0);
+    setAguardandoMotorista(false);
+    setEnderecoBusca('');
+    setSugestoes([]);
+  };
 
   useEffect(() => {
     obterLocalizacao();
@@ -77,20 +90,13 @@ export default function MapaScreen({ usuario, onLogout, onAtualizarUsuario }) {
       setAguardandoMotorista(false);
     });
     websocketService.onCorridaFinalizada(() => {
+      console.log('Corrida finalizada (evento)');
       const finalizada = corridaAtualRef.current;
       if (finalizada?.id) {
         setCorridaParaAvaliar(finalizada);
         setMostrarAvaliacao(true);
       }
-      setCorridaAtual(null);
-      setDestino(null);
-      setDestinoEndereco('');
-      setRota([]);
-      setDistancia(0);
-      setPreco(0);
-      setAguardandoMotorista(false);
-      setEnderecoBusca('');
-      setSugestoes([]);
+      limparEstadoCorrida();
       Alert.alert('Corrida finalizada', 'Obrigado por viajar conosco!');
     });
     websocketService.onMotoristaPosicaoAtualizada((data) => {
@@ -283,15 +289,7 @@ export default function MapaScreen({ usuario, onLogout, onAtualizarUsuario }) {
         onPress: async () => {
           try {
             await axios.patch(`${API_URL}/corridas/${corridaAtual.id}/cancelar`);
-            setCorridaAtual(null);
-            setDestino(null);
-            setDestinoEndereco('');
-            setRota([]);
-            setDistancia(0);
-            setPreco(0);
-            setAguardandoMotorista(false);
-            setEnderecoBusca('');
-            setSugestoes([]);
+            limparEstadoCorrida();
             Alert.alert('Corrida Cancelada', 'Sua corrida foi cancelada');
           } catch (error) {
             console.error('Erro ao cancelar corrida:', error);
@@ -301,6 +299,31 @@ export default function MapaScreen({ usuario, onLogout, onAtualizarUsuario }) {
       }
     ]);
   };
+
+  useEffect(() => {
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
+    }
+    if (!isMotorista && corridaAtual?.id) {
+      pollingRef.current = setInterval(async () => {
+        try {
+          const resp = await axios.get(`${API_URL}/corridas/${corridaAtual.id}`);
+          if (resp.data?.status === 'finalizada' || resp.data?.status === 'cancelada') {
+            limparEstadoCorrida();
+          }
+        } catch (error) {
+          // Silencioso para evitar spam de logs em rede instavel.
+        }
+      }, 5000);
+    }
+    return () => {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
+      }
+    };
+  }, [corridaAtual?.id, isMotorista]);
 
   const centralizarMapa = () => {
     if (mapRef.current) {
