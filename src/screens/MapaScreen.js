@@ -84,7 +84,10 @@ export default function MapaScreen({ usuario, onLogout, onAtualizarUsuario }) {
       }
       setCorridaAtual(null);
       setDestino(null);
+      setDestinoEndereco('');
       setRota([]);
+      setDistancia(0);
+      setPreco(0);
       setAguardandoMotorista(false);
       setEnderecoBusca('');
       setSugestoes([]);
@@ -282,7 +285,10 @@ export default function MapaScreen({ usuario, onLogout, onAtualizarUsuario }) {
             await axios.patch(`${API_URL}/corridas/${corridaAtual.id}/cancelar`);
             setCorridaAtual(null);
             setDestino(null);
+            setDestinoEndereco('');
             setRota([]);
+            setDistancia(0);
+            setPreco(0);
             setAguardandoMotorista(false);
             setEnderecoBusca('');
             setSugestoes([]);
