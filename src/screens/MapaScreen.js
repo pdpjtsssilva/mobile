@@ -447,11 +447,11 @@ export default function MapaScreen({ usuario, onLogout, onAtualizarUsuario }) {
           <View style={styles.infoViagem}>
             <View style={styles.infoItem}>
               <Text style={styles.infoLabel}>Distancia</Text>
-              <Text style={styles.infoValor}>{(distancia && distancia > 0 ? distancia : 1).toFixed(1)} km</Text>
+              <Text style={styles.infoValor}>{(destino ? (distancia || 0) : 0).toFixed(1)} km</Text>
             </View>
             <View style={styles.infoItem}>
               <Text style={styles.infoLabel}>Preco</Text>
-              <Text style={styles.infoValor}>R$ {(preco && preco > 0 ? preco : 5).toFixed(2)}</Text>
+              <Text style={styles.infoValor}>R$ {(destino ? (preco || 0) : 0).toFixed(2)}</Text>
             </View>
           </View>
           <TouchableOpacity style={styles.botaoSolicitar} onPress={solicitarCorrida}>
