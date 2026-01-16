@@ -294,7 +294,7 @@ export default function MapaScreen({ usuario, onLogout, onAtualizarUsuario }) {
         style: 'destructive',
         onPress: async () => {
           try {
-            await axios.patch(`${API_URL}/corridas/${corridaAtual.id}/cancelar`);
+            await axios.patch(`${API_URL}/corridas/${corridaAtual.id}/cancelar`, { canceladoPor: 'passageiro' });
             limparEstadoCorrida();
             Alert.alert('Corrida Cancelada', 'Sua corrida foi cancelada');
           } catch (error) {
