@@ -1,31 +1,74 @@
 {
   "expo": {
-    "name": "mobile",
+    "name": "L'europe",
     "slug": "mobile",
     "version": "1.0.0",
+    "newArchEnabled": false,
+    "jsEngine": "hermes",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.fastasma.mobile",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Este app precisa da sua localização para encontrar motoristas próximos e acompanhar a corrida.",
+        "NSLocationAlwaysUsageDescription": "Este app precisa da sua localização em segundo plano para atualizar sua posição durante a corrida.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Este app precisa da sua localização para encontrar motoristas e acompanhar corridas."
+      },
+      "config": {
+        "googleMapsApiKey": "AIzaSyB4C6Xnxmme3HU0_W6hVlLoprRwmw96o3I"
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true,
-      "package": "com.fastasma.mobile"
+      "package": "com.fastasma.mobile",
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_LOCATION",
+        "INTERNET",
+        "ACCESS_NETWORK_STATE"
+      ],
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyB4C6Xnxmme3HU0_W6hVlLoprRwmw96o3I"
+        }
+      }
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Permitir acesso à localização para encontrar motoristas e acompanhar corridas.",
+          "locationAlwaysPermission": "Permitir acesso à localização em segundo plano para atualizar sua posição durante a corrida.",
+          "locationWhenInUsePermission": "Permitir acesso à localização para encontrar motoristas próximos.",
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "useLegacyPackaging": false
+          }
+        }
+      ]
+    ],
     "extra": {
       "eas": {
         "projectId": "1d6fc0aa-e3dc-4c4a-810a-dc9806cfa61b"

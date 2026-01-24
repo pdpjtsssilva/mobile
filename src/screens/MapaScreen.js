@@ -14,7 +14,10 @@ import { API_URL } from '../config';
 
 export default function MapaScreen({ usuario, onLogout, onAtualizarUsuario }) {
   const isMotorista = usuario?.papel === 'motorista' || usuario?.tipo === 'motorista';
+  const disableMap = true;
   const [location, setLocation] = useState(null);
+  const [mapReady, setMapReady] = useState(false);
+  const [locationError, setLocationError] = useState('');
   const [destino, setDestino] = useState(null);
   const [destinoEndereco, setDestinoEndereco] = useState('');
   const [rota, setRota] = useState([]);
@@ -126,6 +129,7 @@ export default function MapaScreen({ usuario, onLogout, onAtualizarUsuario }) {
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
+        setLocationError('Permissao negada para localizacao');
         Alert.alert('Permissao negada', 'Nao foi possivel acessar sua localizacao');
         return;
       }
@@ -136,8 +140,10 @@ export default function MapaScreen({ usuario, onLogout, onAtualizarUsuario }) {
         latitudeDelta: 0.01,
         longitudeDelta: 0.01
       });
+      setTimeout(() => setMapReady(true), 400);
     } catch (error) {
       console.error('Erro ao obter localizacao:', error);
+      setLocationError('Falha ao obter localizacao');
     }
   };
 
@@ -408,7 +414,11 @@ export default function MapaScreen({ usuario, onLogout, onAtualizarUsuario }) {
         </View>
       )}
 
-      {location ? (
+      {disableMap ? (
+        <View style={styles.loadingContainer}>
+          <Text style={styles.loadingText}>Mapa desativado para teste</Text>
+        </View>
+      ) : location && mapReady ? (
         <MapView
           style={styles.map}
           initialRegion={location}
@@ -445,7 +455,18 @@ export default function MapaScreen({ usuario, onLogout, onAtualizarUsuario }) {
         </MapView>
       ) : (
         <View style={styles.loadingContainer}>
-          <Text style={styles.loadingText}>Carregando localizacao...</Text>
+          <Text style={styles.loadingText}>
+            {locationError ? 'Erro ao carregar localizacao' : 'Carregando localizacao...'}
+          </Text>
+          {locationError ? (
+            <TouchableOpacity style={styles.retryButton} onPress={() => {
+              setLocationError('');
+              setMapReady(false);
+              obterLocalizacao();
+            }}>
+              <Text style={styles.retryButtonText}>Tentar novamente</Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
       )}
 
@@ -636,6 +657,8 @@ const styles = StyleSheet.create({
   map: { flex: 1 },
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f8fafc' },
   loadingText: { fontSize: 16, color: '#64748b', fontWeight: '600' },
+  retryButton: { marginTop: 12, backgroundColor: '#0ea5e9', paddingHorizontal: 18, paddingVertical: 10, borderRadius: 10 },
+  retryButtonText: { color: 'white', fontWeight: '700' },
   statusWS: { position: 'absolute', top: 10, right: 10, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20, zIndex: 1000 },
   wsOnline: { backgroundColor: '#10b981' },
   wsOffline: { backgroundColor: '#ef4444' },
