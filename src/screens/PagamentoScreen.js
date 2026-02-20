@@ -8,13 +8,15 @@ import {
   TextInput,
   Modal,
   Alert,
-  ActivityIndicator
+  ActivityIndicator,
+  Clipboard
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import { API_URL } from '../config';
 
-export default function PagamentoScreen({ usuario, onVoltar }) {
-  const [metodoSelecionado, setMetodoSelecionado] = useState('cartao');
+export default function PagamentoScreen({ usuario, onVoltar, onAtualizarUsuario }) {
+  const [metodoSelecionado, setMetodoSelecionado] = useState(usuario?.metodoPagamentoPadrao || 'cartao');
   const [cartoes, setCartoes] = useState([]);
   const [carregando, setCarregando] = useState(true);
 
@@ -26,6 +28,47 @@ export default function PagamentoScreen({ usuario, onVoltar }) {
     cvv: '',
     bandeira: 'Visa'
   });
+
+  const CHAVE_PIX = '83bcab98-d142-4022-8483-9f59fe9f3cdd';
+  const MB_WAY_NUMBER = '925539552';
+
+  const copiarChavePix = () => {
+    Clipboard.setString(CHAVE_PIX);
+    Alert.alert('Sucesso', 'Chave PIX copiada!');
+  };
+
+  const copiarMbWay = () => {
+    Clipboard.setString(MB_WAY_NUMBER);
+    Alert.alert('Sucesso', 'Número MB Way copiado!');
+  };
+
+  const selecionarMetodo = async (metodo) => {
+    setMetodoSelecionado(metodo);
+    try {
+      await axios.put(`${API_URL}/auth/atualizar/${usuario.id}`, {
+        nome: usuario.nome,
+        email: usuario.email,
+        telefone: usuario.telefone,
+        documento: usuario.documento,
+        metodoPagamentoPadrao: metodo
+      });
+      
+      // Atualizar estado local do usuário
+      const usuarioAtualizado = { ...usuario, metodoPagamentoPadrao: metodo };
+      
+      if (onAtualizarUsuario) {
+        onAtualizarUsuario(usuarioAtualizado);
+      }
+      
+      // Salvar no AsyncStorage
+      await AsyncStorage.setItem('usuario', JSON.stringify(usuarioAtualizado));
+      
+      Alert.alert('Sucesso', `Método ${metodo.toUpperCase()} definido como padrão!`);
+    } catch (error) {
+      console.error('Erro ao salvar método:', error);
+      Alert.alert('Erro', 'Não foi possível salvar o método de pagamento');
+    }
+  };
 
   useEffect(() => {
     carregarDados();
@@ -126,21 +169,28 @@ export default function PagamentoScreen({ usuario, onVoltar }) {
           <View style={styles.metodos}>
             <TouchableOpacity
               style={[styles.metodoBtn, metodoSelecionado === 'cartao' && styles.metodoBtnAtivo]}
-              onPress={() => setMetodoSelecionado('cartao')}
+              onPress={() => selecionarMetodo('cartao')}
             >
               <Text style={[styles.metodoBtnText, metodoSelecionado === 'cartao' && styles.metodoBtnTextAtivo]}>Cartão</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
+              style={[styles.metodoBtn, metodoSelecionado === 'pix' && styles.metodoBtnAtivo]}
+              onPress={() => selecionarMetodo('pix')}
+            >
+              <Text style={[styles.metodoBtnText, metodoSelecionado === 'pix' && styles.metodoBtnTextAtivo]}>PIX</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
               style={[styles.metodoBtn, metodoSelecionado === 'mbway' && styles.metodoBtnAtivo]}
-              onPress={() => setMetodoSelecionado('mbway')}
+              onPress={() => selecionarMetodo('mbway')}
             >
               <Text style={[styles.metodoBtnText, metodoSelecionado === 'mbway' && styles.metodoBtnTextAtivo]}>MB Way</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               style={[styles.metodoBtn, metodoSelecionado === 'dinheiro' && styles.metodoBtnAtivo]}
-              onPress={() => setMetodoSelecionado('dinheiro')}
+              onPress={() => selecionarMetodo('dinheiro')}
             >
               <Text style={[styles.metodoBtnText, metodoSelecionado === 'dinheiro' && styles.metodoBtnTextAtivo]}>Dinheiro</Text>
             </TouchableOpacity>
@@ -193,7 +243,46 @@ export default function PagamentoScreen({ usuario, onVoltar }) {
           <View style={styles.section}>
             <Text style={styles.sectionTitulo}>Pagamento via MB Way</Text>
             <Text style={styles.textoInfo}>
-              Em produção, o app solicitará MB Way e pagará pela plataforma. Por enquanto, selecione MB Way para registrar a preferência.
+              Use o número MB Way abaixo para realizar o pagamento instantâneo.
+            </Text>
+            
+            <View style={styles.pixContainer}>
+              <View style={styles.pixChaveBox}>
+                <Text style={styles.pixChaveLabel}>Número MB Way</Text>
+                <Text style={styles.pixChaveTexto}>{MB_WAY_NUMBER}</Text>
+              </View>
+              
+              <TouchableOpacity style={styles.btnCopiarPix} onPress={copiarMbWay}>
+                <Text style={styles.btnCopiarPixText}>📋 Copiar Número</Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.textoInfo} style={{ marginTop: 15, fontSize: 12, color: '#94a3b8' }}>
+              Após o pagamento, o sistema confirmará automaticamente a transação.
+            </Text>
+          </View>
+        )}
+
+        {metodoSelecionado === 'pix' && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitulo}>Pagamento via PIX</Text>
+            <Text style={styles.textoInfo}>
+              Use a chave PIX abaixo para realizar o pagamento instantâneo.
+            </Text>
+            
+            <View style={styles.pixContainer}>
+              <View style={styles.pixChaveBox}>
+                <Text style={styles.pixChaveLabel}>Chave PIX (Aleatória)</Text>
+                <Text style={styles.pixChaveTexto}>{CHAVE_PIX}</Text>
+              </View>
+              
+              <TouchableOpacity style={styles.btnCopiarPix} onPress={copiarChavePix}>
+                <Text style={styles.btnCopiarPixText}>📋 Copiar Chave</Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.textoInfo} style={{ marginTop: 15, fontSize: 12, color: '#94a3b8' }}>
+              Após o pagamento, o sistema confirmará automaticamente a transação.
             </Text>
           </View>
         )}
@@ -287,8 +376,8 @@ const styles = StyleSheet.create({
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },
   sectionTitulo: { fontSize: 16, fontWeight: '600', color: '#1e293b', marginBottom: 15 },
   adicionarBtn: { fontSize: 14, color: '#3b82f6', fontWeight: '600' },
-  metodos: { flexDirection: 'row', gap: 10 },
-  metodoBtn: { flex: 1, paddingVertical: 12, borderRadius: 8, backgroundColor: '#f1f5f9', alignItems: 'center' },
+  metodos: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  metodoBtn: { minWidth: '45%', paddingVertical: 12, borderRadius: 8, backgroundColor: '#f1f5f9', alignItems: 'center' },
   metodoBtnAtivo: { backgroundColor: '#3b82f6' },
   metodoBtnText: { fontSize: 14, color: '#64748b', fontWeight: '500' },
   metodoBtnTextAtivo: { color: 'white' },
@@ -315,5 +404,11 @@ const styles = StyleSheet.create({
   modalBotaoCancelar: { backgroundColor: '#e2e8f0' },
   modalBotaoSalvar: { backgroundColor: '#3b82f6' },
   modalBotaoText: { fontSize: 14, fontWeight: '600', color: '#64748b' },
-  modalBotaoTextSalvar: { color: 'white' }
+  modalBotaoTextSalvar: { color: 'white' },
+  pixContainer: { marginTop: 15 },
+  pixChaveBox: { backgroundColor: '#f8fafc', borderRadius: 8, padding: 15, borderWidth: 1, borderColor: '#e2e8f0', marginBottom: 10 },
+  pixChaveLabel: { fontSize: 12, color: '#64748b', marginBottom: 8, fontWeight: '600' },
+  pixChaveTexto: { fontSize: 14, color: '#1e293b', fontFamily: 'monospace', lineHeight: 20 },
+  btnCopiarPix: { backgroundColor: '#10b981', padding: 14, borderRadius: 8, alignItems: 'center' },
+  btnCopiarPixText: { color: 'white', fontSize: 15, fontWeight: '600' }
 });

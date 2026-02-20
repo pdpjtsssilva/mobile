@@ -1,16 +1,41 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, Alert, ActivityIndicator } from 'react-native';
+import axios from 'axios';
+import { API_URL } from '../config';
 
 export default function ConfigScreen({ usuario, onSave, onClose }) {
-  const [notificacoes, setNotificacoes] = useState(true);
-  const [pagamentoPadrao, setPagamentoPadrao] = useState('cartao');
+  const [notificacoes, setNotificacoes] = useState(usuario?.notificacoesAtivas ?? true);
+  const [pagamentoPadrao, setPagamentoPadrao] = useState(usuario?.metodoPagamentoPadrao || 'cartao');
   const [email, setEmail] = useState(usuario?.email || '');
   const [telefone, setTelefone] = useState(usuario?.telefone || '');
+  const [salvando, setSalvando] = useState(false);
 
-  const salvar = () => {
-    Alert.alert('Configurações', 'Preferências salvas (mock).');
-    onSave?.({ notificacoes, pagamentoPadrao, email, telefone });
-    onClose?.();
+  const salvar = async () => {
+    try {
+      setSalvando(true);
+      await axios.put(`${API_URL}/auth/atualizar/${usuario.id}`, {
+        nome: usuario.nome,
+        email,
+        telefone,
+        documento: usuario.documento,
+        metodoPagamentoPadrao: pagamentoPadrao,
+        notificacoesAtivas: notificacoes
+      });
+      Alert.alert('Sucesso', 'Configurações salvas com sucesso!');
+      onSave?.({ 
+        ...usuario,
+        email, 
+        telefone, 
+        metodoPagamentoPadrao: pagamentoPadrao,
+        notificacoesAtivas: notificacoes 
+      });
+      onClose?.();
+    } catch (error) {
+      console.error('Erro ao salvar configurações:', error);
+      Alert.alert('Erro', 'Não foi possível salvar as configurações. Tente novamente.');
+    } finally {
+      setSalvando(false);
+    }
   };
 
   return (
@@ -25,14 +50,14 @@ export default function ConfigScreen({ usuario, onSave, onClose }) {
 
       <Text style={styles.label}>Pagamento padrão</Text>
       <View style={styles.row}>
-        {['cartao', 'mbway', 'dinheiro'].map((m) => (
+        {['cartao', 'pix', 'mbway', 'dinheiro'].map((m) => (
           <TouchableOpacity
             key={m}
             style={[styles.metodoBtn, pagamentoPadrao === m && styles.metodoBtnAtivo]}
             onPress={() => setPagamentoPadrao(m)}
           >
             <Text style={[styles.metodoBtnText, pagamentoPadrao === m && styles.metodoBtnTextAtivo]}>
-              {m === 'cartao' ? 'Cartão' : m === 'mbway' ? 'MB Way' : 'Dinheiro'}
+              {m === 'cartao' ? 'Cartão' : m === 'pix' ? 'PIX' : m === 'mbway' ? 'MB Way' : 'Dinheiro'}
             </Text>
           </TouchableOpacity>
         ))}
@@ -54,8 +79,16 @@ export default function ConfigScreen({ usuario, onSave, onClose }) {
         </TouchableOpacity>
       </View>
 
-      <TouchableOpacity style={styles.salvar} onPress={salvar}>
-        <Text style={styles.salvarText}>Salvar</Text>
+      <TouchableOpacity 
+        style={[styles.salvar, salvando && styles.salvarDisabled]} 
+        onPress={salvar}
+        disabled={salvando}
+      >
+        {salvando ? (
+          <ActivityIndicator color="white" />
+        ) : (
+          <Text style={styles.salvarText}>Salvar</Text>
+        )}
       </TouchableOpacity>
 
       <TouchableOpacity style={styles.fechar} onPress={onClose}>
@@ -70,8 +103,8 @@ const styles = StyleSheet.create({
   titulo: { fontSize: 20, fontWeight: '700', color: '#0f172a', marginBottom: 20 },
   label: { fontSize: 14, color: '#64748b', marginBottom: 6, marginTop: 10 },
   input: { backgroundColor: 'white', borderRadius: 10, padding: 12, borderWidth: 1, borderColor: '#e2e8f0' },
-  row: { flexDirection: 'row', gap: 10, marginTop: 10 },
-  metodoBtn: { flex: 1, paddingVertical: 10, borderRadius: 8, backgroundColor: '#e2e8f0', alignItems: 'center' },
+  row: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 10 },
+  metodoBtn: { paddingVertical: 10, paddingHorizontal: 16, borderRadius: 8, backgroundColor: '#e2e8f0', alignItems: 'center', minWidth: 80 },
   metodoBtnAtivo: { backgroundColor: '#0ea5e9' },
   metodoBtnText: { color: '#475569', fontWeight: '600' },
   metodoBtnTextAtivo: { color: 'white' },
@@ -80,6 +113,7 @@ const styles = StyleSheet.create({
   toggleText: { color: '#475569', fontWeight: '600' },
   toggleTextAtivo: { color: 'white' },
   salvar: { marginTop: 20, backgroundColor: '#10b981', padding: 14, borderRadius: 10, alignItems: 'center' },
+  salvarDisabled: { backgroundColor: '#94a3b8' },
   salvarText: { color: 'white', fontWeight: '700' },
   fechar: { marginTop: 12, alignItems: 'center' },
   fecharText: { color: '#ef4444', fontWeight: '700' },

@@ -1,17 +1,215 @@
-import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import MapboxGL, { initMapbox } from './src/mapbox';
+import { View, Text, ActivityIndicator, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { NavigationContainer } from '@react-navigation/native';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Font from 'expo-font';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import LoginScreen from './src/screens/LoginScreen';
+import CadastroScreen from './src/screens/CadastroScreen';
+import MapaScreen from './src/screens/MapaScreen';
+import MotoristaScreen from './src/screens/MotoristaScreen';
 
-export default function App() {
+const Stack = createNativeStackNavigator();
+
+function PassageiroStack({ onLogin }) {
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>App base OK</Text>
-      <Text style={styles.subtitle}>Build diagnostico sem rotas</Text>
-    </View>
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="Login">
+        {(props) => <LoginScreen {...props} onLogin={onLogin} />}
+      </Stack.Screen>
+      <Stack.Screen name="Cadastro">
+        {(props) => <CadastroScreen {...props} onLogin={onLogin} />}
+      </Stack.Screen>
+    </Stack.Navigator>
   );
 }
 
+function MotoristaStack({ onLogin }) {
+  return (
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="LoginMotorista">
+        {(props) => <LoginScreen {...props} onLogin={onLogin} cadastroRoute="CadastroMotorista" />}
+      </Stack.Screen>
+      <Stack.Screen name="CadastroMotorista">
+        {(props) => <CadastroScreen {...props} onLogin={onLogin} tipoCadastro="motorista" />}
+      </Stack.Screen>
+    </Stack.Navigator>
+  );
+}
+
+export default function App() {
+  const [tipoApp, setTipoApp] = useState(null); // 'passageiro' ou 'motorista'
+  const [usuario, setUsuario] = useState(null);
+  const [carregando, setCarregando] = useState(true);
+  const [mapboxReady, setMapboxReady] = useState(false);
+  const [fontsReady, setFontsReady] = useState(false);
+
+  useEffect(() => {
+    verificarTipo();
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    initMapbox().finally(() => {
+      if (mounted) setMapboxReady(true);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    Font.loadAsync(MaterialCommunityIcons.font)
+      .then(() => {
+        if (mounted) setFontsReady(true);
+      })
+      .catch(() => {
+        if (mounted) setFontsReady(true);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const verificarTipo = async () => {
+    try {
+      const tipo = await AsyncStorage.getItem('tipoApp');
+      const usuarioSalvo = await AsyncStorage.getItem('usuario');
+      if (tipo) {
+        setTipoApp(tipo);
+        if (usuarioSalvo) setUsuario(JSON.parse(usuarioSalvo));
+      }
+    } catch (error) {
+      console.error('Erro ao verificar tipo:', error);
+    } finally {
+      setCarregando(false);
+    }
+  };
+
+  const escolherTipo = async (tipo) => {
+    await AsyncStorage.setItem('tipoApp', tipo);
+    setTipoApp(tipo);
+  };
+
+  const handleLoginPassageiro = async (dadosUsuario) => {
+    const user = { ...dadosUsuario, tipo: 'passageiro' };
+    setUsuario(user);
+    await AsyncStorage.setItem('usuario', JSON.stringify(user));
+  };
+
+  const handleLoginMotorista = async (dadosUsuario) => {
+    const user = { ...dadosUsuario, tipo: 'motorista' };
+    setUsuario(user);
+    await AsyncStorage.setItem('usuario', JSON.stringify(user));
+  };
+
+  const handleLogout = async () => {
+    setUsuario(null);
+    await AsyncStorage.removeItem('usuario');
+    await AsyncStorage.removeItem('token');
+    await AsyncStorage.removeItem('tipoApp');
+    setTipoApp(null);
+  };
+
+  const resetarApp = async () => {
+    Alert.alert('Resetar App', 'Isso vai limpar todos os dados. Deseja continuar?', [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Resetar',
+        style: 'destructive',
+        onPress: async () => {
+          await AsyncStorage.clear();
+          setTipoApp(null);
+          setUsuario(null);
+        }
+      }
+    ]);
+  };
+
+  const handleAtualizarUsuario = (usuarioAtualizado) => {
+    setUsuario(usuarioAtualizado);
+    AsyncStorage.setItem('usuario', JSON.stringify(usuarioAtualizado));
+  };
+
+  if (carregando || !mapboxReady || !fontsReady) {
+    return (
+      <View style={styles.loading}>
+        <ActivityIndicator size="large" color="#ef4444" />
+      </View>
+    );
+  }
+
+  // Tela de escolha inicial
+  if (!tipoApp) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.escolhaBox}>
+          <Text style={styles.logo}></Text>
+          <Text style={styles.titulo}>L'europe App</Text>
+          <Text style={styles.subtitulo}>Escolha como deseja usar o app</Text>
+
+          <TouchableOpacity style={[styles.botaoEscolha, styles.botaoPassageiro]} onPress={() => escolherTipo('passageiro')}>
+            <Text style={styles.botaoEscolhaTexto}>Sou Passageiro</Text>
+            <Text style={styles.botaoEscolhaDesc}>Quero solicitar corridas</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={[styles.botaoEscolha, styles.botaoMotorista]} onPress={() => escolherTipo('motorista')}>
+            <Text style={styles.botaoEscolhaTexto}>Sou Motorista</Text>
+            <Text style={styles.botaoEscolhaDesc}>Quero aceitar corridas</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
+  // App Passageiro
+  if (tipoApp === 'passageiro') {
+    return (
+      <NavigationContainer>
+        <View style={{ flex: 1 }}>
+          {usuario && usuario.id ? (
+            <MapaScreen usuario={usuario} onLogout={handleLogout} onAtualizarUsuario={handleAtualizarUsuario} />
+          ) : (
+            <PassageiroStack onLogin={handleLoginPassageiro} />
+          )}
+        </View>
+      </NavigationContainer>
+    );
+  }
+
+  // App Motorista
+  if (tipoApp === 'motorista') {
+    return (
+      <NavigationContainer>
+        <View style={{ flex: 1 }}>
+          {usuario && usuario.id ? (
+            <MotoristaScreen usuario={usuario} onLogout={handleLogout} />
+          ) : (
+            <MotoristaStack onLogin={handleLoginMotorista} />
+          )}
+        </View>
+      </NavigationContainer>
+    );
+  }
+
+  return null;
+}
+
 const styles = StyleSheet.create({
-  container: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#0f172a', padding: 24 },
-  title: { fontSize: 26, fontWeight: '700', color: '#ffffff', marginBottom: 8 },
-  subtitle: { fontSize: 14, color: '#cbd5e1' }
+  loading: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  container: { flex: 1, backgroundColor: '#0f172a', justifyContent: 'center', alignItems: 'center', padding: 20 },
+  escolhaBox: { width: '100%', maxWidth: 400, backgroundColor: 'white', borderRadius: 20, padding: 30, alignItems: 'center' },
+  logo: { fontSize: 80, marginBottom: 10 },
+  titulo: { fontSize: 32, fontWeight: 'bold', color: '#1e293b', marginBottom: 5 },
+  subtitulo: { fontSize: 14, color: '#64748b', marginBottom: 30, textAlign: 'center' },
+  botaoEscolha: { width: '100%', padding: 20, borderRadius: 15, marginBottom: 15, alignItems: 'center', elevation: 3 },
+  botaoPassageiro: { backgroundColor: '#3b82f6' },
+  botaoMotorista: { backgroundColor: '#10b981' },
+  botaoEscolhaTexto: { fontSize: 20, fontWeight: 'bold', color: 'white', marginBottom: 5 },
+  botaoEscolhaDesc: { fontSize: 12, color: 'rgba(255,255,255,0.8)' },
+  botaoResetar: { position: 'absolute', bottom: 20, right: 20, backgroundColor: '#ef4444', width: 50, height: 50, borderRadius: 25, justifyContent: 'center', alignItems: 'center', elevation: 5 },
+  botaoResetarText: { fontSize: 24, color: 'white' },
 });

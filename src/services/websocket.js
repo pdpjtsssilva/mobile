@@ -91,6 +91,30 @@ class WebSocketService {
     this.socket.on('corrida:aceita', callback);
   }
 
+  onMotoristasOnline(callback) {
+    if (!this.socket) return;
+    console.log('Ouvindo evento: motoristas:online');
+    this.socket.on('motoristas:online', callback);
+  }
+
+  onMotoristaOnline(callback) {
+    if (!this.socket) return;
+    console.log('Ouvindo evento: motorista:online');
+    this.socket.on('motorista:online', callback);
+  }
+
+  onMotoristaOffline(callback) {
+    if (!this.socket) return;
+    console.log('Ouvindo evento: motorista:offline');
+    this.socket.on('motorista:offline', callback);
+  }
+
+  onMotoristaPosicaoOnline(callback) {
+    if (!this.socket) return;
+    console.log('Ouvindo evento: motorista:posicaoOnline');
+    this.socket.on('motorista:posicaoOnline', callback);
+  }
+
   onMotoristaPosicaoAtualizada(callback) {
     if (!this.socket) return;
     console.log('Ouvindo evento: motorista:posicaoAtualizada');

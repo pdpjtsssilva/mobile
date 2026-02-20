@@ -17,7 +17,6 @@ import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import PagamentoScreen from './PagamentoScreen';
 import { API_URL } from '../config';
-import * as ImagePicker from 'expo-image-picker';
 
 export default function PerfilScreen({ usuario, onLogout, onAtualizar }) {
   const isMotorista = usuario?.tipo === 'motorista';
@@ -81,6 +80,16 @@ export default function PerfilScreen({ usuario, onLogout, onAtualizar }) {
   const [confirmarSenha, setConfirmarSenha] = useState('');
   const [notifPrefs, setNotifPrefs] = useState({ push: true, email: true, sms: false });
   const [privacyPrefs, setPrivacyPrefs] = useState({ compartilharLocalizacao: true, perfilVisivel: true });
+
+  const loadImagePicker = async () => {
+    try {
+      const picker = await import('expo-image-picker');
+      if (!picker?.requestMediaLibraryPermissionsAsync) return null;
+      return picker;
+    } catch (error) {
+      return null;
+    }
+  };
 
   useEffect(() => {
     carregarEstatisticas();
@@ -166,6 +175,11 @@ export default function PerfilScreen({ usuario, onLogout, onAtualizar }) {
   };
 
   const escolherFoto = async () => {
+    const ImagePicker = await loadImagePicker();
+    if (!ImagePicker) {
+      Alert.alert('Erro', 'Recurso de imagens indisponivel neste build.');
+      return;
+    }
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
       Alert.alert('Permissão necessária', 'Permita acesso às fotos para alterar o avatar.');
@@ -182,6 +196,11 @@ export default function PerfilScreen({ usuario, onLogout, onAtualizar }) {
   };
 
   const escolherDocumento = async (lado) => {
+    const ImagePicker = await loadImagePicker();
+    if (!ImagePicker) {
+      Alert.alert('Erro', 'Recurso de imagens indisponivel neste build.');
+      return;
+    }
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
       Alert.alert('Permissão necessária', 'Permita acesso às fotos para enviar o documento.');

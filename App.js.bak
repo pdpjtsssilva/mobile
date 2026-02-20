@@ -116,8 +116,8 @@ export default function App() {
     return (
       <View style={styles.container}>
         <View style={styles.escolhaBox}>
-          <Text style={styles.logo}>🚗</Text>
-          <Text style={styles.titulo}>Bem-vindo!</Text>
+          <Text style={styles.logo}></Text>
+          <Text style={styles.titulo}>L'Europe app</Text>
           <Text style={styles.subtitulo}>Escolha como deseja usar o app</Text>
 
           <TouchableOpacity style={[styles.botaoEscolha, styles.botaoPassageiro]} onPress={() => escolherTipo('passageiro')}>

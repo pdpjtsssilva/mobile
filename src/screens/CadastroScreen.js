@@ -23,7 +23,7 @@ export default function CadastroScreen({ navigation, onLogin, tipoCadastro = 'pa
   const [loading, setLoading] = useState(false);
 
   const handleCadastro = async () => {
-    if (!nome || !email || !telefone || !senha || !confirmarSenha) {
+    if (!nome || !email || !senha || !confirmarSenha) {
       Alert.alert('Erro', 'Preencha todos os campos');
       return;
     }
@@ -43,9 +43,9 @@ export default function CadastroScreen({ navigation, onLogin, tipoCadastro = 'pa
       const response = await axios.post(
         `${API_URL}/auth/cadastro`,
         {
-          nome,
-          email,
-          telefone,
+          nome: nome.trim(),
+          email: email.trim().toLowerCase(),
+          telefone: telefone.trim() || null,
           senha,
           tipo: tipoCadastro,
           signupToken: SIGNUP_TOKEN
@@ -73,7 +73,7 @@ export default function CadastroScreen({ navigation, onLogin, tipoCadastro = 'pa
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
         <View style={styles.content}>
           <Text style={styles.logo}>🚕</Text>
           <Text style={styles.title}>Criar Conta</Text>
