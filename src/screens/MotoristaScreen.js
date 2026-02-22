@@ -3,6 +3,7 @@ import { Alert, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity
 import MapView, { Marker, Polyline } from 'react-native-maps';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
+import * as ImagePicker from 'expo-image-picker';
 import websocketService from '../services/websocket';
 import axios from 'axios';
 import { API_URL } from '../config';
@@ -36,6 +37,9 @@ export default function MotoristaScreen({ usuario, onLogout }) {
   const [carroEditando, setCarroEditando] = useState(null);
   const [mostrarFormCarro, setMostrarFormCarro] = useState(false);
   const [rotaMotorista, setRotaMotorista] = useState([]);
+  const [fotoSeguroUri, setFotoSeguroUri] = useState(null);
+  const [fotoInspecaoUri, setFotoInspecaoUri] = useState(null);
+  const [fotoLicenciamentoUri, setFotoLicenciamentoUri] = useState(null);
   const [formCarro, setFormCarro] = useState({
     marca: '',
     modelo: '',
@@ -115,9 +119,22 @@ export default function MotoristaScreen({ usuario, onLogout }) {
     locationRef.current = regiao;
   };
 
-  // Upload de fotos desabilitado
   const escolherFotoDocumento = async (tipo) => {
-    Alert.alert('Upload desabilitado', 'Funcionalidade de upload de documentos temporariamente desabilitada');
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permissao necessaria', 'Permita acesso as fotos para enviar os documentos do veiculo.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.7,
+    });
+    if (result.canceled || !result.assets?.length) return;
+    const uri = result.assets[0].uri;
+    if (tipo === 'seguro') setFotoSeguroUri(uri);
+    if (tipo === 'inspecao') setFotoInspecaoUri(uri);
+    if (tipo === 'licenciamento') setFotoLicenciamentoUri(uri);
   };
 
   const parseSeguro = (texto) => {
@@ -372,6 +389,9 @@ export default function MotoristaScreen({ usuario, onLogout }) {
       licenciamentoData: '',
       licenciamentoValidade: '',
     });
+    setFotoSeguroUri(null);
+    setFotoInspecaoUri(null);
+    setFotoLicenciamentoUri(null);
     setMostrarFormCarro(true);
   };
 
@@ -390,6 +410,9 @@ export default function MotoristaScreen({ usuario, onLogout }) {
       licenciamentoData: parseLicenciamento(carro.licenciamento).data || '',
       licenciamentoValidade: parseLicenciamento(carro.licenciamento).validade || '',
     });
+    setFotoSeguroUri(carro.fotoSeguro || null);
+    setFotoInspecaoUri(carro.fotoInspecao || null);
+    setFotoLicenciamentoUri(carro.fotoLicenciamento || null);
     setMostrarFormCarro(true);
   };
 
@@ -417,6 +440,15 @@ export default function MotoristaScreen({ usuario, onLogout }) {
       if (seguroStr) formData.append('seguro', seguroStr);
       if (inspecaoStr) formData.append('inspecao', inspecaoStr);
       if (licenciamentoStr) formData.append('licenciamento', licenciamentoStr);
+      if (fotoSeguroUri && !fotoSeguroUri.startsWith('http')) {
+        formData.append('fotoSeguro', { uri: fotoSeguroUri, name: 'seguro.jpg', type: 'image/jpeg' });
+      }
+      if (fotoInspecaoUri && !fotoInspecaoUri.startsWith('http')) {
+        formData.append('fotoInspecao', { uri: fotoInspecaoUri, name: 'inspecao.jpg', type: 'image/jpeg' });
+      }
+      if (fotoLicenciamentoUri && !fotoLicenciamentoUri.startsWith('http')) {
+        formData.append('fotoLicenciamento', { uri: fotoLicenciamentoUri, name: 'licenciamento.jpg', type: 'image/jpeg' });
+      }
 
       if (carroEditando) {
         const res = await axios.put(
@@ -889,17 +921,23 @@ export default function MotoristaScreen({ usuario, onLogout }) {
               <TextInput style={styles.input} placeholder="N° da apolice" value={formCarro.apolice} onChangeText={(text) => setFormCarro({ ...formCarro, apolice: text })} />
               <TextInput style={styles.input} placeholder="Validade (Seguro)" value={formCarro.seguroValidade} onChangeText={(text) => setFormCarro({ ...formCarro, seguroValidade: text })} />
               <TouchableOpacity style={styles.uploadBtn} onPress={() => escolherFotoDocumento('seguro')}>
+                <Text style={styles.uploadBtnText}>{fotoSeguroUri ? 'Trocar foto do seguro' : 'Anexar foto do seguro'}</Text>
+                {fotoSeguroUri && <Image source={{ uri: fotoSeguroUri }} style={styles.uploadPreview} />}
               </TouchableOpacity>
 
               <Text style={styles.label}>Inspecao</Text>
               <TextInput style={styles.input} placeholder="Validade (Inspecao)" value={formCarro.inspecaoValidade} onChangeText={(text) => setFormCarro({ ...formCarro, inspecaoValidade: text })} />
               <TouchableOpacity style={styles.uploadBtn} onPress={() => escolherFotoDocumento('inspecao')}>
+                <Text style={styles.uploadBtnText}>{fotoInspecaoUri ? 'Trocar foto da inspecao' : 'Anexar foto da inspecao'}</Text>
+                {fotoInspecaoUri && <Image source={{ uri: fotoInspecaoUri }} style={styles.uploadPreview} />}
               </TouchableOpacity>
 
               <Text style={styles.label}>Licenciamento</Text>
               <TextInput style={styles.input} placeholder="Data" value={formCarro.licenciamentoData} onChangeText={(text) => setFormCarro({ ...formCarro, licenciamentoData: text })} />
               <TextInput style={styles.input} placeholder="Validade (Licenciamento)" value={formCarro.licenciamentoValidade} onChangeText={(text) => setFormCarro({ ...formCarro, licenciamentoValidade: text })} />
               <TouchableOpacity style={styles.uploadBtn} onPress={() => escolherFotoDocumento('licenciamento')}>
+                <Text style={styles.uploadBtnText}>{fotoLicenciamentoUri ? 'Trocar foto do licenciamento' : 'Anexar foto do licenciamento'}</Text>
+                {fotoLicenciamentoUri && <Image source={{ uri: fotoLicenciamentoUri }} style={styles.uploadPreview} />}
               </TouchableOpacity>
             </ScrollView>
             <View style={styles.modalBotoes}>

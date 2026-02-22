@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   ScrollView,
   Modal,
+  Image,
   Switch,
   Linking
 } from 'react-native';
@@ -16,6 +17,7 @@ import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import PagamentoScreen from './PagamentoScreen';
 import { API_URL } from '../config';
+import * as ImagePicker from 'expo-image-picker';
 
 export default function PerfilScreen({ usuario, onLogout, onAtualizar }) {
   const isMotorista = usuario?.tipo === 'motorista';
@@ -23,6 +25,7 @@ export default function PerfilScreen({ usuario, onLogout, onAtualizar }) {
   const [carregando, setCarregando] = useState(false);
   const [estatisticas, setEstatisticas] = useState(null);
   const [mostrarPagamentos, setMostrarPagamentos] = useState(false);
+  const [avatarUri, setAvatarUri] = useState(usuario?.avatarUri || null);
   const [mostrarAlterarSenha, setMostrarAlterarSenha] = useState(false);
   const [mostrarNotificacoes, setMostrarNotificacoes] = useState(false);
   const [mostrarPrivacidade, setMostrarPrivacidade] = useState(false);
@@ -33,37 +36,125 @@ export default function PerfilScreen({ usuario, onLogout, onAtualizar }) {
   const [documento, setDocumento] = useState(usuario?.documento || '');
   const [dataNascimento, setDataNascimento] = useState(usuario?.dataNascimento || '');
   const [senha, setSenha] = useState('');
+  const [docFrente, setDocFrente] = useState(usuario?.cnhFrenteUri || usuario?.docFrenteUri || null);
+  const [docVerso, setDocVerso] = useState(usuario?.cnhVersoUri || usuario?.docVersoUri || null);
   const [cnhStatus, setCnhStatus] = useState(usuario?.cnhStatus || 'pendente');
-  
+  const resolveDocUri = (uri) => {
+    if (!uri) return null;
+    if (uri.startsWith('http') || uri.startsWith('file:') || uri.startsWith('content:')) return uri;
+    return `${API_URL.replace('/api', '')}${uri}`;
+  };
+  const limparDocumentosCnh = async () => {
+    await AsyncStorage.removeItem(`cnh_${usuario?.id}`);
+    setDocFrente(null);
+    setDocVerso(null);
+    setCnhStatus('pendente');
+    Alert.alert('CNH', 'Documentos limpos. Envie novamente e toque em Confirmar.');
+  };
+
+  // Garantir que o estado inicial reflita dados persistidos do usuário
+  useEffect(() => {
+    if (usuario) {
+      setDocFrente(usuario.cnhFrenteUri || usuario.docFrenteUri || docFrente);
+      setDocVerso(usuario.cnhVersoUri || usuario.docVersoUri || docVerso);
+      if (usuario.cnhStatus) setCnhStatus(usuario.cnhStatus);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [usuario?.cnhFrenteUri, usuario?.cnhVersoUri]);
+  // Carrega CNH do storage local (fallback quando backend não envia)
+  useEffect(() => {
+    (async () => {
+      try {
+        const salvo = await AsyncStorage.getItem(`cnh_${usuario?.id}`);
+        if (salvo) {
+          const parsed = JSON.parse(salvo);
+          if (parsed?.frente) setDocFrente(parsed.frente);
+          if (parsed?.verso) setDocVerso(parsed.verso);
+        }
+      } catch (e) {
+        console.error('Erro ao carregar CNH local:', e);
+      }
+    })();
+  }, [usuario?.id]);
   const [senhaAtual, setSenhaAtual] = useState('');
   const [novaSenha, setNovaSenha] = useState('');
   const [confirmarSenha, setConfirmarSenha] = useState('');
-  const [notificacoesAtivas, setNotificacoesAtivas] = useState(usuario?.notificacoesAtivas ?? true);
+  const [notifPrefs, setNotifPrefs] = useState({ push: true, email: true, sms: false });
+  const [privacyPrefs, setPrivacyPrefs] = useState({ compartilharLocalizacao: true, perfilVisivel: true });
 
   useEffect(() => {
-    if (isMotorista) carregarEstatisticas();
+    carregarEstatisticas();
   }, []);
 
   const carregarEstatisticas = async () => {
     try {
-      const { data } = await axios.get(`${API_URL}/motoristas/${usuario.id}/estatisticas`);
-      setEstatisticas(data);
-    } catch (err) {
-      console.error('Erro ao carregar estatísticas:', err);
+      const response = await axios.get(`${API_URL}/corridas/usuario/${usuario.id}`);
+      const corridas = response.data;
+      
+      const stats = {
+        totalCorridas: corridas.length,
+        totalGasto: corridas.reduce((sum, c) => sum + c.preco, 0),
+        corridasCanceladas: corridas.filter(c => c.status === 'cancelada').length
+      };
+      
+      setEstatisticas(stats);
+    } catch (error) {
+      console.error('Erro ao carregar estatísticas:', error);
     }
   };
 
   const salvarPerfil = async () => {
-    if (!nome.trim() || !email.trim() || !telefone.trim()) {
-      Alert.alert('Erro', 'Preencha todos os campos obrigatórios');
+    if (!nome.trim() || !email.trim()) {
+      Alert.alert('Erro', 'Nome e email são obrigatórios');
       return;
     }
+
     setCarregando(true);
     try {
-      const dados = { nome, email, telefone, documento, dataNascimento };
-      const { data } = await axios.put(`${API_URL}/auth/atualizar/${usuario.id}`, dados);
-      await AsyncStorage.setItem('usuario', JSON.stringify(data));
-      if (onAtualizar) onAtualizar(data);
+      const response = await axios.put(`${API_URL}/auth/atualizar/${usuario.id}`, {
+        nome: nome.trim(),
+        email: email.trim(),
+        telefone: telefone.trim(),
+        documento: documento.trim()
+      });
+
+      // Envia CNH se selecionada (motorista)
+      let cnhUpload = {};
+      if (isMotorista && (docFrente || docVerso)) {
+        const formData = new FormData();
+        if (docFrente && (docFrente.startsWith('file:') || docFrente.startsWith('content:'))) {
+          formData.append('cnhFrente', { uri: docFrente, name: 'cnh_frente.jpg', type: 'image/jpeg' });
+        }
+        if (docVerso && (docVerso.startsWith('file:') || docVerso.startsWith('content:'))) {
+          formData.append('cnhVerso', { uri: docVerso, name: 'cnh_verso.jpg', type: 'image/jpeg' });
+        }
+        try {
+          const uploadRes = await axios.post(
+            `${API_URL.replace('/api', '')}/api/motoristas/${usuario.id}/cnh`,
+            formData,
+            { headers: { 'Content-Type': 'multipart/form-data' } }
+          );
+          cnhUpload = uploadRes.data || {};
+        } catch (err) {
+          console.error('Erro ao enviar CNH:', err);
+          Alert.alert('AtenÇõÇœo', 'Perfil salvo, mas falhou ao enviar CNH.');
+        }
+      }
+
+      const atualizado = {
+        ...response.data,
+        avatarUri,
+        cnhFrenteUri: cnhUpload.cnhFrenteUri || docFrente,
+        cnhVersoUri: cnhUpload.cnhVersoUri || docVerso,
+        cnhStatus: cnhUpload.cnhFrenteUri || cnhUpload.cnhVersoUri ? 'enviado' : (usuario.cnhStatus || cnhStatus)
+      };
+      await AsyncStorage.setItem('usuario', JSON.stringify(atualizado));
+      await AsyncStorage.setItem(`cnh_${usuario.id}`, JSON.stringify({ frente: atualizado.cnhFrenteUri, verso: atualizado.cnhVersoUri, status: atualizado.cnhStatus }));
+      if (onAtualizar) onAtualizar(atualizado);
+
+      if (cnhUpload.cnhFrenteUri) setDocFrente(cnhUpload.cnhFrenteUri);
+      if (cnhUpload.cnhVersoUri) setDocVerso(cnhUpload.cnhVersoUri);
+
       Alert.alert('Sucesso', 'Perfil atualizado com sucesso!');
       setEditando(false);
     } catch (error) {
@@ -74,359 +165,475 @@ export default function PerfilScreen({ usuario, onLogout, onAtualizar }) {
     }
   };
 
-  const alterarSenha = async () => {
-    if (!senhaAtual || !novaSenha || !confirmarSenha) {
-      Alert.alert('Erro', 'Preencha todos os campos de senha');
+  const escolherFoto = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permissão necessária', 'Permita acesso às fotos para alterar o avatar.');
       return;
     }
-    if (novaSenha !== confirmarSenha) {
-      Alert.alert('Erro', 'As senhas não coincidem');
-      return;
-    }
-    if (novaSenha.length < 6) {
-      Alert.alert('Erro', 'A senha deve ter pelo menos 6 caracteres');
-      return;
-    }
-    setCarregando(true);
-    try {
-      await axios.put(`${API_URL}/auth/alterar-senha/${usuario.id}`, {
-        senhaAtual,
-        novaSenha
-      });
-      Alert.alert('Sucesso', 'Senha alterada com sucesso!');
-      setSenhaAtual('');
-      setNovaSenha('');
-      setConfirmarSenha('');
-      setMostrarAlterarSenha(false);
-    } catch (error) {
-      Alert.alert('Erro', error.response?.data?.erro || 'Erro ao alterar senha');
-    } finally {
-      setCarregando(false);
+    const result = await ImagePicker.launchImageLibraryAsync({
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.7
+    });
+    if (!result.canceled && result.assets?.length > 0) {
+      setAvatarUri(result.assets[0].uri);
     }
   };
 
-  const salvarNotificacoes = async () => {
-    setCarregando(true);
-    try {
-      const { data } = await axios.put(`${API_URL}/auth/atualizar/${usuario.id}`, {
-        notificacoesAtivas
-      });
-      await AsyncStorage.setItem('usuario', JSON.stringify(data));
-      if (onAtualizar) onAtualizar(data);
-      Alert.alert('Sucesso', 'Preferências de notificações atualizadas!');
-      setMostrarNotificacoes(false);
-    } catch (error) {
-      Alert.alert('Erro', 'Erro ao atualizar notificações');
-    } finally {
-      setCarregando(false);
+  const escolherDocumento = async (lado) => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permissão necessária', 'Permita acesso às fotos para enviar o documento.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      allowsEditing: true,
+      aspect: [3, 2],
+      quality: 0.8
+    });
+    if (!result.canceled && result.assets?.length > 0) {
+      if (lado === 'frente') setDocFrente(result.assets[0].uri);
+      if (lado === 'verso') setDocVerso(result.assets[0].uri);
     }
   };
 
-  const excluirConta = () => {
+  const handleLogout = () => {
     Alert.alert(
-      'Excluir Conta',
-      'Tem certeza que deseja excluir sua conta? Esta ação não pode ser desfeita.',
+      'Sair',
+      'Deseja realmente sair?',
       [
         { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Excluir',
-          style: 'destructive',
+        { 
+          text: 'Sair', 
           onPress: async () => {
-            setCarregando(true);
-            try {
-              await axios.delete(`${API_URL}/auth/excluir/${usuario.id}`);
-              await AsyncStorage.removeItem('usuario');
-              Alert.alert('Conta excluída', 'Sua conta foi excluída com sucesso');
-              onLogout();
-            } catch (error) {
-              Alert.alert('Erro', 'Erro ao excluir conta');
-            } finally {
-              setCarregando(false);
-            }
-          }
+            await AsyncStorage.removeItem('usuario');
+            onLogout();
+          },
+          style: 'destructive'
         }
       ]
     );
   };
 
+  if (!usuario) {
+    return (
+      <View style={styles.container}>
+        <Text>Carregando...</Text>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>Perfil</Text>
-        </View>
+      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+        {isMotorista ? (
+          <>
+            <View style={styles.header}>
+              <TouchableOpacity onPress={escolherFoto} style={styles.avatarWrapper}>
+                {avatarUri ? (
+                  <Image source={{ uri: avatarUri }} style={styles.avatarImg} />
+                ) : (
+                  <View style={styles.avatar}>
+                    <Text style={styles.avatarText}>{usuario.nome?.charAt(0).toUpperCase() || 'U'}</Text>
+                  </View>
+                )}
+                <Text style={styles.editarFoto}>Editar foto</Text>
+              </TouchableOpacity>
+              <Text style={styles.nomeHeader}>{usuario.nome || 'Motorista'}</Text>
+              <Text style={styles.emailHeader}>{usuario.email || ''}</Text>
+            </View>
 
-        {/* Informações pessoais */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Informações Pessoais</Text>
-          
-          <View style={styles.campo}>
-            <Text style={styles.label}>Nome Completo</Text>
-            <TextInput
-              style={styles.input}
-              value={nome}
-              onChangeText={setNome}
-              editable={editando}
-              placeholder="Seu nome"
-            />
-          </View>
+            <View style={styles.section}>
+              <Text style={styles.sectionTitulo}>Editar Perfil</Text>
 
-          <View style={styles.campo}>
-            <Text style={styles.label}>Email</Text>
-            <TextInput
-              style={styles.input}
-              value={email}
-              onChangeText={setEmail}
-              editable={editando}
-              placeholder="seu@email.com"
-              keyboardType="email-address"
-              autoCapitalize="none"
-            />
-          </View>
+              <View style={styles.campo}>
+                <Text style={styles.label}>Nome completo</Text>
+                <TextInput style={styles.input} value={nome} onChangeText={setNome} placeholder="Seu nome" />
+              </View>
 
-          <View style={styles.campo}>
-            <Text style={styles.label}>Telefone</Text>
-            <TextInput
-              style={styles.input}
-              value={telefone}
-              onChangeText={setTelefone}
-              editable={editando}
-              placeholder="(00) 00000-0000"
-              keyboardType="phone-pad"
-            />
-          </View>
+              <View style={styles.campo}>
+                <Text style={styles.label}>Data Nascimento</Text>
+                <TextInput style={styles.input} value={dataNascimento} onChangeText={setDataNascimento} placeholder="Digite data nascimento" />
+              </View>
 
-          <View style={styles.campo}>
-            <Text style={styles.label}>Documento (CPF/RG)</Text>
-            <TextInput
-              style={styles.input}
-              value={documento}
-              onChangeText={setDocumento}
-              editable={editando}
-              placeholder="000.000.000-00"
-            />
-          </View>
+              <View style={styles.campo}>
+                <Text style={styles.label}>Telefone</Text>
+                <TextInput style={styles.input} value={telefone} onChangeText={setTelefone} keyboardType="phone-pad" />
+              </View>
 
-          <View style={styles.campo}>
-            <Text style={styles.label}>Data de Nascimento</Text>
-            <TextInput
-              style={styles.input}
-              value={dataNascimento}
-              onChangeText={setDataNascimento}
-              editable={editando}
-              placeholder="DD/MM/AAAA"
-            />
-          </View>
+              <View style={styles.campo}>
+                <Text style={styles.label}>Email</Text>
+                <TextInput style={styles.input} value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
+              </View>
 
-          {editando && (
-            <TouchableOpacity style={styles.botaoSalvar} onPress={salvarPerfil} disabled={carregando}>
-              {carregando ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.botaoText}>Salvar Alterações</Text>
+              <View style={styles.campo}>
+                <Text style={styles.label}>Senha</Text>
+                <TextInput style={styles.input} value={senha} onChangeText={setSenha} secureTextEntry placeholder="Digite sua senha" />
+              </View>
+
+              <View style={styles.docCard}>
+              <Text style={styles.docTitulo}>Documentos</Text>
+              <View style={styles.docLinha}>
+                <View>
+                  <Text style={styles.docLabel}>CNH - CARTEIRA DE HABILITAÇÃO</Text>
+                  <Text
+                    style={[
+                      styles.docStatus,
+                      cnhStatus === 'aprovado'
+                        ? styles.docStatusAprovado
+                        : cnhStatus === 'reprovado'
+                          ? styles.docStatusReprovado
+                          : cnhStatus === 'enviado'
+                            ? styles.docStatusEnviado
+                            : styles.docStatusPendente
+                    ]}
+                  >
+                    {cnhStatus === 'aprovado'
+                      ? 'CNH aprovada'
+                      : cnhStatus === 'reprovado'
+                        ? 'CNH reprovada'
+                        : cnhStatus === 'enviado'
+                          ? 'CNH enviada'
+                          : cnhStatus === 'pendente'
+                            ? 'CNH pendente'
+                            : docFrente || docVerso
+                              ? 'CNH enviada'
+                              : 'Aguardando envio'}
+                  </Text>
+                </View>
+                <Text style={styles.docCheck}>✔</Text>
+              </View>
+              <View style={styles.docUploads}>
+                <TouchableOpacity style={styles.docUploadBtn} onPress={() => escolherDocumento('frente')}>
+                  <Text style={styles.docUploadText}>{docFrente ? 'Trocar Frente' : 'Adicionar Frente'}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.docUploadBtn} onPress={() => escolherDocumento('verso')}>
+                  <Text style={styles.docUploadText}>{docVerso ? 'Trocar Verso' : 'Adicionar Verso'}</Text>
+                </TouchableOpacity>
+              </View>
+              <View style={{ marginTop: 8 }}>
+                <TouchableOpacity style={styles.docResetBtn} onPress={limparDocumentosCnh}>
+                  <Text style={styles.docResetText}>Reenviar CNH</Text>
+                </TouchableOpacity>
+              </View>
+              {(docFrente || docVerso) && (
+                <View style={styles.docPreviewRow}>
+                  {docFrente && (
+                    <TouchableOpacity
+                      onPress={() => {
+                        const fullUri = resolveDocUri(docFrente);
+                        if (!fullUri) return;
+                        Linking.openURL(fullUri);
+                      }}
+                    >
+                      <Image
+                        source={{ uri: resolveDocUri(docFrente) }}
+                        style={styles.docPreview}
+                      />
+                    </TouchableOpacity>
+                  )}
+                  {docVerso && (
+                    <TouchableOpacity
+                      onPress={() => {
+                        const fullUri = resolveDocUri(docVerso);
+                        if (!fullUri) return;
+                        Linking.openURL(fullUri);
+                      }}
+                    >
+                      <Image
+                        source={{ uri: resolveDocUri(docVerso) }}
+                        style={styles.docPreview}
+                      />
+                    </TouchableOpacity>
+                  )}
+                </View>
               )}
-            </TouchableOpacity>
-          )}
-        </View>
-
-        {/* Estatísticas Motorista */}
-        {isMotorista && estatisticas && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Estatísticas</Text>
-            <View style={styles.statsGrid}>
-              <View style={styles.statItem}>
-                <Text style={styles.statValue}>{estatisticas.totalCorridas || 0}</Text>
-                <Text style={styles.statLabel}>Corridas</Text>
-              </View>
-              <View style={styles.statItem}>
-                <Text style={styles.statValue}>R$ {(estatisticas.ganhoTotal || 0).toFixed(2)}</Text>
-                <Text style={styles.statLabel}>Ganhos</Text>
-              </View>
-              <View style={styles.statItem}>
-                <Text style={styles.statValue}>{(estatisticas.avaliacaoMedia || 0).toFixed(1)} ⭐</Text>
-                <Text style={styles.statLabel}>Avaliação</Text>
-              </View>
             </View>
-          </View>
-        )}
 
-        {/* CNH Status (Motorista) */}
-        {isMotorista && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Status da CNH</Text>
-            <View style={styles.cnhStatus}>
-              <Text style={styles.cnhStatusText}>
-                Status: <Text style={styles[`status_${cnhStatus}`]}>{cnhStatus.toUpperCase()}</Text>
-              </Text>
-              <Text style={styles.infoText}>
-                {cnhStatus === 'pendente' && 'Documentos em análise'}
-                {cnhStatus === 'aprovada' && 'CNH aprovada! Você pode aceitar corridas'}
-                {cnhStatus === 'rejeitada' && 'CNH rejeitada. Atualize os documentos'}
-              </Text>
+              <TouchableOpacity style={styles.botaoSalvarGrande} onPress={salvarPerfil}>
+                {carregando ? <ActivityIndicator color="white" /> : <Text style={styles.botaoSalvarGrandeText}>Confirmar</Text>}
+              </TouchableOpacity>
             </View>
-          </View>
-        )}
+          </>
+        ) : (
+          <>
+            <View style={styles.header}>
+              <TouchableOpacity onPress={escolherFoto} style={styles.avatarWrapper}>
+                {avatarUri ? (
+                  <Image source={{ uri: avatarUri }} style={styles.avatarImg} />
+                ) : (
+                  <View style={styles.avatar}>
+                    <Text style={styles.avatarText}>{usuario.nome?.charAt(0).toUpperCase() || 'U'}</Text>
+                  </View>
+                )}
+                <Text style={styles.editarFoto}>Editar foto</Text>
+              </TouchableOpacity>
+              <Text style={styles.nomeHeader}>{usuario.nome || 'Não informado'}</Text>
+              <Text style={styles.emailHeader}>{usuario.email || 'Não informado'}</Text>
+            </View>
 
-        {/* Configurações */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Configurações</Text>
-          
-          <TouchableOpacity style={styles.menuItem} onPress={() => setMostrarAlterarSenha(true)}>
-            <Text style={styles.menuItemText}>🔒 Alterar Senha</Text>
-            <Text style={styles.menuItemArrow}>›</Text>
-          </TouchableOpacity>
+            {estatisticas && (
+              <View style={styles.estatisticasCard}>
+                <Text style={styles.estatisticasTitulo}>Estatísticas</Text>
+                <View style={styles.estatisticasGrid}>
+                  <View style={styles.estatItem}>
+                    <Text style={styles.estatValor}>{estatisticas.totalCorridas || 0}</Text>
+                    <Text style={styles.estatLabel}>Corridas</Text>
+                  </View>
+                  <View style={styles.estatItem}>
+                    <Text style={styles.estatValor}>R$ {(estatisticas.totalGasto || 0).toFixed(2)}</Text>
+                    <Text style={styles.estatLabel}>Total Gasto</Text>
+                  </View>
+                  <View style={styles.estatItem}>
+                    <Text style={styles.estatValor}>{estatisticas.corridasCanceladas || 0}</Text>
+                    <Text style={styles.estatLabel}>Canceladas</Text>
+                  </View>
+                </View>
+              </View>
+            )}
 
-          <TouchableOpacity style={styles.menuItem} onPress={() => setMostrarNotificacoes(true)}>
-            <Text style={styles.menuItemText}>🔔 Notificações</Text>
-            <Text style={styles.menuItemArrow}>›</Text>
-          </TouchableOpacity>
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitulo}>Informações Pessoais</Text>
+              </View>
 
-          <TouchableOpacity style={styles.menuItem} onPress={() => setMostrarPrivacidade(true)}>
-            <Text style={styles.menuItemText}>🛡️ Privacidade</Text>
-            <Text style={styles.menuItemArrow}>›</Text>
-          </TouchableOpacity>
+              <View style={styles.campo}>
+                <Text style={styles.label}>Nome</Text>
+                <TextInput
+                  style={[styles.input, !editando && styles.inputDisabled]}
+                  value={nome}
+                  onChangeText={setNome}
+                  editable={editando}
+                  placeholder="Seu nome"
+                />
+              </View>
 
-          {!isMotorista && (
-            <TouchableOpacity style={styles.menuItem} onPress={() => setMostrarPagamentos(true)}>
-              <Text style={styles.menuItemText}>💳 Formas de Pagamento</Text>
-              <Text style={styles.menuItemArrow}>›</Text>
+              <View style={styles.campo}>
+                <Text style={styles.label}>Email</Text>
+                <TextInput
+                  style={[styles.input, !editando && styles.inputDisabled]}
+                  value={email}
+                  onChangeText={setEmail}
+                  editable={editando}
+                  placeholder="seu@email.com"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                />
+              </View>
+
+              <View style={styles.campo}>
+                <Text style={styles.label}>Telefone</Text>
+                <TextInput
+                  style={[styles.input, !editando && styles.inputDisabled]}
+                  value={telefone}
+                  onChangeText={setTelefone}
+                  editable={editando}
+                  placeholder="(00) 00000-0000"
+                  keyboardType="phone-pad"
+                />
+              </View>
+
+              <View style={styles.campo}>
+                <Text style={styles.label}>Documento</Text>
+                <TextInput
+                  style={[styles.input, !editando && styles.inputDisabled]}
+                  value={documento}
+                  onChangeText={setDocumento}
+                  editable={editando}
+                  placeholder="CPF/NIF/ID"
+                  autoCapitalize="characters"
+                />
+              </View>
+
+              {editando && (
+                <View style={styles.botoesEdicao}>
+                  <TouchableOpacity 
+                    style={[styles.botao, styles.botaoCancelar]} 
+                    onPress={() => {
+                      setNome(usuario.nome || '');
+                      setEmail(usuario.email || '');
+                      setTelefone(usuario.telefone || '');
+                      setEditando(false);
+                    }}
+                  >
+                    <Text style={styles.botaoText}>Cancelar</Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity 
+                    style={[styles.botao, styles.botaoSalvar]} 
+                    onPress={salvarPerfil}
+                    disabled={carregando}
+                  >
+                    {carregando ? (
+                      <ActivityIndicator color="white" />
+                    ) : (
+                      <Text style={styles.botaoText}>Salvar</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
+
+            <View style={styles.section}>
+              <Text style={styles.sectionTitulo}>Opções</Text>
+
+              <TouchableOpacity style={styles.opcao} onPress={() => setMostrarAlterarSenha(true)}>
+                <Text style={styles.opcaoTexto}>Alterar Senha</Text>
+                <Text style={styles.opcaoSeta}>›</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.opcao} onPress={() => setMostrarNotificacoes(true)}>
+                <Text style={styles.opcaoTexto}>Notificações</Text>
+                <Text style={styles.opcaoSeta}>›</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.opcao} onPress={() => setMostrarPrivacidade(true)}>
+                <Text style={styles.opcaoTexto}>Privacidade</Text>
+                <Text style={styles.opcaoSeta}>›</Text>
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity 
+              style={styles.botaoSair}
+              onPress={handleLogout}
+            >
+              <Text style={styles.botaoSairText}>Sair da Conta</Text>
             </TouchableOpacity>
-          )}
-        </View>
 
-        {/* Botão Sair */}
-        <TouchableOpacity style={styles.botaoSair} onPress={onLogout}>
-          <Text style={styles.botaoSairText}>Sair da Conta</Text>
-        </TouchableOpacity>
+            <View style={styles.versao}>
+              <Text style={styles.versaoText}>Versão 1.0.0</Text>
+            </View>
+          </>
+        )}
       </ScrollView>
 
-      {/* Modal Alterar Senha */}
-      <Modal visible={mostrarAlterarSenha} transparent animationType="slide">
+      <Modal
+        visible={mostrarPagamentos}
+        animationType="slide"
+        onRequestClose={() => setMostrarPagamentos(false)}
+      >
+        <PagamentoScreen 
+          usuario={usuario} 
+          onVoltar={() => setMostrarPagamentos(false)}
+        />
+      </Modal>
+
+      <Modal visible={mostrarAlterarSenha} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Alterar Senha</Text>
-            
+          <View style={styles.modalContainer}>
+            <Text style={styles.modalTitulo}>Alterar Senha</Text>
             <TextInput
               style={styles.input}
-              placeholder="Senha Atual"
-              secureTextEntry
+              placeholder="Senha atual"
               value={senhaAtual}
               onChangeText={setSenhaAtual}
+              secureTextEntry
             />
             <TextInput
               style={styles.input}
-              placeholder="Nova Senha"
-              secureTextEntry
+              placeholder="Nova senha"
               value={novaSenha}
               onChangeText={setNovaSenha}
+              secureTextEntry
             />
             <TextInput
               style={styles.input}
-              placeholder="Confirmar Nova Senha"
-              secureTextEntry
+              placeholder="Confirmar nova senha"
               value={confirmarSenha}
               onChangeText={setConfirmarSenha}
+              secureTextEntry
             />
-
-            <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.modalButtonCancel]}
-                onPress={() => setMostrarAlterarSenha(false)}
-              >
-                <Text style={styles.modalButtonText}>Cancelar</Text>
+            <View style={styles.modalBotoes}>
+              <TouchableOpacity style={[styles.modalBotao, styles.modalBotaoCancelar]} onPress={() => setMostrarAlterarSenha(false)}>
+                <Text style={styles.modalBotaoText}>Cancelar</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.modalButton, styles.modalButtonConfirm]}
-                onPress={alterarSenha}
-                disabled={carregando}
+                style={[styles.modalBotao, styles.modalBotaoSalvar]}
+                onPress={() => {
+                  if (!novaSenha || novaSenha !== confirmarSenha) {
+                    Alert.alert('Erro', 'Senhas não conferem');
+                    return;
+                  }
+                  Alert.alert('Sucesso', 'Senha atualizada (mock)');
+                  setSenhaAtual('');
+                  setNovaSenha('');
+                  setConfirmarSenha('');
+                  setMostrarAlterarSenha(false);
+                }}
               >
-                {carregando ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <Text style={styles.modalButtonText}>Salvar</Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Modal Notificações */}
-      <Modal visible={mostrarNotificacoes} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Notificações</Text>
-            
-            <View style={styles.switchContainer}>
-              <Text style={styles.switchLabel}>Receber notificações</Text>
-              <Switch
-                value={notificacoesAtivas}
-                onValueChange={setNotificacoesAtivas}
-                trackColor={{ false: '#767577', true: '#34d399' }}
-                thumbColor={notificacoesAtivas ? '#10b981' : '#f4f3f4'}
-              />
-            </View>
-
-            <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.modalButtonCancel]}
-                onPress={() => setMostrarNotificacoes(false)}
-              >
-                <Text style={styles.modalButtonText}>Cancelar</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.modalButtonConfirm]}
-                onPress={salvarNotificacoes}
-                disabled={carregando}
-              >
-                {carregando ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <Text style={styles.modalButtonText}>Salvar</Text>
-                )}
+                <Text style={[styles.modalBotaoText, styles.modalBotaoTextSalvar]}>Salvar</Text>
               </TouchableOpacity>
             </View>
           </View>
         </View>
       </Modal>
 
-      {/* Modal Privacidade */}
-      <Modal visible={mostrarPrivacidade} transparent animationType="slide">
+      <Modal visible={mostrarNotificacoes} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Privacidade e Segurança</Text>
-            
-            <TouchableOpacity style={styles.privacyItem} onPress={() => Linking.openURL('https://example.com/termos')}>
-              <Text style={styles.privacyItemText}>📄 Termos de Uso</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.privacyItem} onPress={() => Linking.openURL('https://example.com/privacidade')}>
-              <Text style={styles.privacyItemText}>🔒 Política de Privacidade</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={[styles.privacyItem, styles.dangerItem]} onPress={excluirConta}>
-              <Text style={styles.dangerText}>🗑️ Excluir Conta</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.modalButton, styles.modalButtonCancel, { marginTop: 20 }]}
-              onPress={() => setMostrarPrivacidade(false)}
-            >
-              <Text style={styles.modalButtonText}>Fechar</Text>
-            </TouchableOpacity>
+          <View style={styles.modalContainer}>
+            <Text style={styles.modalTitulo}>Notificações</Text>
+            {[
+              { key: 'push', label: 'Push' },
+              { key: 'email', label: 'Email' },
+              { key: 'sms', label: 'SMS' }
+            ].map((item) => (
+              <View key={item.key} style={styles.toggleRow}>
+                <Text style={styles.toggleLabel}>{item.label}</Text>
+                <Switch
+                  value={notifPrefs[item.key]}
+                  onValueChange={(v) => setNotifPrefs((prev) => ({ ...prev, [item.key]: v }))}
+                />
+              </View>
+            ))}
+            <View style={styles.modalBotoes}>
+              <TouchableOpacity style={[styles.modalBotao, styles.modalBotaoCancelar]} onPress={() => setMostrarNotificacoes(false)}>
+                <Text style={styles.modalBotaoText}>Fechar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalBotao, styles.modalBotaoSalvar]}
+                onPress={() => {
+                  Alert.alert('Sucesso', 'Preferências salvas (mock)');
+                  setMostrarNotificacoes(false);
+                }}
+              >
+                <Text style={[styles.modalBotaoText, styles.modalBotaoTextSalvar]}>Salvar</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
 
-      {/* Modal Pagamentos */}
-      <Modal visible={mostrarPagamentos} transparent animationType="slide">
+      <Modal visible={mostrarPrivacidade} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <PagamentoScreen
-              usuario={usuario}
-              onFechar={() => setMostrarPagamentos(false)}
-              onAtualizarUsuario={onAtualizar}
-            />
+          <View style={styles.modalContainer}>
+            <Text style={styles.modalTitulo}>Privacidade</Text>
+            {[
+              { key: 'compartilharLocalizacao', label: 'Compartilhar localização' },
+              { key: 'perfilVisivel', label: 'Perfil visível' }
+            ].map((item) => (
+              <View key={item.key} style={styles.toggleRow}>
+                <Text style={styles.toggleLabel}>{item.label}</Text>
+                <Switch
+                  value={privacyPrefs[item.key]}
+                  onValueChange={(v) => setPrivacyPrefs((prev) => ({ ...prev, [item.key]: v }))}
+                />
+              </View>
+            ))}
+            <View style={styles.modalBotoes}>
+              <TouchableOpacity style={[styles.modalBotao, styles.modalBotaoCancelar]} onPress={() => setMostrarPrivacidade(false)}>
+                <Text style={styles.modalBotaoText}>Fechar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalBotao, styles.modalBotaoSalvar]}
+                onPress={() => {
+                  Alert.alert('Sucesso', 'Privacidade salva (mock)');
+                  setMostrarPrivacidade(false);
+                }}
+              >
+                <Text style={[styles.modalBotaoText, styles.modalBotaoTextSalvar]}>Salvar</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -436,44 +643,70 @@ export default function PerfilScreen({ usuario, onLogout, onAtualizar }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f8fafc' },
-  scroll: { flex: 1 },
+  scrollView: { flex: 1 },
   scrollContent: { paddingBottom: 40 },
-  header: { backgroundColor: '#ef4444', padding: 20, paddingTop: 40 },
-  headerTitle: { fontSize: 24, fontWeight: 'bold', color: '#fff' },
-  section: { backgroundColor: '#fff', margin: 16, padding: 16, borderRadius: 12, elevation: 2 },
-  sectionTitle: { fontSize: 18, fontWeight: 'bold', color: '#1e293b', marginBottom: 16 },
-  campo: { marginBottom: 16 },
-  label: { fontSize: 14, color: '#64748b', marginBottom: 8, fontWeight: '600' },
-  input: { backgroundColor: '#f1f5f9', padding: 12, borderRadius: 8, fontSize: 16, color: '#1e293b', borderWidth: 1, borderColor: '#e2e8f0' },
-  botaoSalvar: { backgroundColor: '#ef4444', padding: 16, borderRadius: 8, alignItems: 'center', marginTop: 8 },
-  botaoText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
-  statsGrid: { flexDirection: 'row', justifyContent: 'space-around' },
-  statItem: { alignItems: 'center' },
-  statValue: { fontSize: 24, fontWeight: 'bold', color: '#ef4444' },
-  statLabel: { fontSize: 12, color: '#64748b', marginTop: 4 },
-  cnhStatus: { padding: 16, backgroundColor: '#f8fafc', borderRadius: 8, borderWidth: 1, borderColor: '#e2e8f0' },
-  cnhStatusText: { fontSize: 16, color: '#1e293b', marginBottom: 8 },
-  status_pendente: { color: '#f59e0b', fontWeight: 'bold' },
-  status_aprovada: { color: '#10b981', fontWeight: 'bold' },
-  status_rejeitada: { color: '#ef4444', fontWeight: 'bold' },
-  infoText: { fontSize: 14, color: '#64748b' },
-  menuItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
-  menuItemText: { fontSize: 16, color: '#1e293b' },
-  menuItemArrow: { fontSize: 24, color: '#cbd5e1' },
-  botaoSair: { margin: 16, padding: 16, backgroundColor: '#ef4444', borderRadius: 8, alignItems: 'center' },
-  botaoSairText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
+  header: { backgroundColor: '#3b82f6', paddingTop: 60, paddingBottom: 30, alignItems: 'center' },
+  avatar: { width: 80, height: 80, borderRadius: 40, backgroundColor: 'white', justifyContent: 'center', alignItems: 'center', marginBottom: 15 },
+  avatarText: { fontSize: 32, fontWeight: 'bold', color: '#3b82f6' },
+  avatarWrapper: { alignItems: 'center', marginBottom: 10 },
+  avatarImg: { width: 80, height: 80, borderRadius: 40, marginBottom: 6 },
+  editarFoto: { fontSize: 12, color: '#e0e7ff' },
+  nomeHeader: { fontSize: 24, fontWeight: 'bold', color: 'white', marginBottom: 5 },
+  emailHeader: { fontSize: 14, color: '#e0e7ff' },
+  estatisticasCard: { margin: 20, backgroundColor: 'white', borderRadius: 12, padding: 20, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4 },
+  estatisticasTitulo: { fontSize: 16, fontWeight: '600', color: '#1e293b', marginBottom: 15 },
+  estatisticasGrid: { flexDirection: 'row', justifyContent: 'space-around' },
+  estatItem: { alignItems: 'center' },
+  estatValor: { fontSize: 20, fontWeight: 'bold', color: '#3b82f6', marginBottom: 5 },
+  estatLabel: { fontSize: 12, color: '#64748b' },
+  section: { marginHorizontal: 20, marginBottom: 20, backgroundColor: 'white', borderRadius: 12, padding: 20, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4 },
+  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  sectionTitulo: { fontSize: 16, fontWeight: '600', color: '#1e293b' },
+  editarButton: { fontSize: 14, color: '#3b82f6', fontWeight: '600' },
+  campo: { marginBottom: 15 },
+  label: { fontSize: 12, color: '#64748b', marginBottom: 5, fontWeight: '500' },
+  input: { backgroundColor: '#f1f5f9', borderRadius: 8, padding: 12, fontSize: 14, color: '#1e293b', borderWidth: 1, borderColor: 'transparent' },
+  inputDisabled: { backgroundColor: '#f8fafc', color: '#94a3b8' },
+  botoesEdicao: { flexDirection: 'row', gap: 10, marginTop: 10 },
+  botao: { flex: 1, paddingVertical: 12, borderRadius: 8, alignItems: 'center' },
+  botaoCancelar: { backgroundColor: '#e2e8f0' },
+  botaoSalvar: { backgroundColor: '#3b82f6' },
+  botaoText: { fontSize: 14, fontWeight: '600', color: 'white' },
+  opcao: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
+  opcaoTexto: { fontSize: 14, color: '#1e293b' },
+  opcaoSeta: { fontSize: 20, color: '#94a3b8' },
+  botaoSair: { marginHorizontal: 20, backgroundColor: '#ef4444', borderRadius: 8, padding: 15, alignItems: 'center', marginTop: 10 },
+  botaoSairText: { color: 'white', fontSize: 14, fontWeight: '600' },
+  versao: { alignItems: 'center', marginTop: 20, marginBottom: 20 },
+  versaoText: { fontSize: 12, color: '#94a3b8' },
+  docCard: { backgroundColor: '#f1f5f9', borderRadius: 10, padding: 12, marginTop: 10 },
+  docTitulo: { fontSize: 14, fontWeight: '700', color: '#0f172a', marginBottom: 8 },
+  docLinha: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  docLabel: { fontSize: 13, color: '#0f172a' },
+  docStatus: { fontSize: 12, marginTop: 4 },
+  docStatusAprovado: { color: '#16a34a' },
+  docStatusReprovado: { color: '#dc2626' },
+  docStatusEnviado: { color: '#d97706' },
+  docStatusPendente: { color: '#0f172a' },
+  docCheck: { fontSize: 20, color: '#22c55e', fontWeight: '700' },
+  docUploads: { flexDirection: 'row', gap: 10, marginTop: 10 },
+  docUploadBtn: { flex: 1, backgroundColor: '#e2e8f0', paddingVertical: 10, borderRadius: 8, alignItems: 'center' },
+  docUploadText: { color: '#0f172a', fontWeight: '700' },
+  docResetBtn: { backgroundColor: '#ef4444', paddingVertical: 10, borderRadius: 8, alignItems: 'center' },
+  docResetText: { color: 'white', fontWeight: '700' },
+  docPreviewRow: { flexDirection: 'row', gap: 10, marginTop: 10 },
+  docPreview: { width: 120, height: 80, borderRadius: 8, backgroundColor: '#e2e8f0' },
+  botaoSalvarGrande: { marginTop: 20, backgroundColor: '#0f172a', padding: 14, borderRadius: 10, alignItems: 'center' },
+  botaoSalvarGrandeText: { color: 'white', fontWeight: '700', fontSize: 16 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
-  modalContent: { width: '90%', maxHeight: '80%', backgroundColor: '#fff', borderRadius: 16, padding: 20 },
-  modalTitle: { fontSize: 20, fontWeight: 'bold', color: '#1e293b', marginBottom: 20 },
-  modalButtons: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 20 },
-  modalButton: { flex: 1, padding: 12, borderRadius: 8, alignItems: 'center', marginHorizontal: 4 },
-  modalButtonCancel: { backgroundColor: '#94a3b8' },
-  modalButtonConfirm: { backgroundColor: '#ef4444' },
-  modalButtonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  switchContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12 },
-  switchLabel: { fontSize: 16, color: '#1e293b' },
-  privacyItem: { paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
-  privacyItemText: { fontSize: 16, color: '#1e293b' },
-  dangerItem: { borderBottomWidth: 0, marginTop: 20 },
-  dangerText: { fontSize: 16, color: '#ef4444', fontWeight: '600' }
+  modalContainer: { width: '90%', backgroundColor: 'white', borderRadius: 12, padding: 20 },
+  modalTitulo: { fontSize: 18, fontWeight: '600', color: '#1e293b', marginBottom: 12 },
+  modalBotoes: { flexDirection: 'row', gap: 10, marginTop: 10 },
+  modalBotao: { flex: 1, paddingVertical: 12, borderRadius: 8, alignItems: 'center' },
+  modalBotaoCancelar: { backgroundColor: '#e2e8f0' },
+  modalBotaoSalvar: { backgroundColor: '#3b82f6' },
+  modalBotaoText: { fontSize: 14, fontWeight: '600', color: '#64748b' },
+  modalBotaoTextSalvar: { color: 'white' },
+  toggleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8 },
+  toggleLabel: { fontSize: 14, color: '#1e293b' }
 });
