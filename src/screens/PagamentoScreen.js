@@ -11,11 +11,10 @@ import {
   ActivityIndicator,
   Clipboard
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import { API_URL } from '../config';
 
-export default function PagamentoScreen({ usuario, onVoltar, onAtualizarUsuario }) {
+export default function PagamentoScreen({ usuario, onVoltar }) {
   const [metodoSelecionado, setMetodoSelecionado] = useState(usuario?.metodoPagamentoPadrao || 'cartao');
   const [cartoes, setCartoes] = useState([]);
   const [carregando, setCarregando] = useState(true);
@@ -52,17 +51,6 @@ export default function PagamentoScreen({ usuario, onVoltar, onAtualizarUsuario 
         documento: usuario.documento,
         metodoPagamentoPadrao: metodo
       });
-      
-      // Atualizar estado local do usuário
-      const usuarioAtualizado = { ...usuario, metodoPagamentoPadrao: metodo };
-      
-      if (onAtualizarUsuario) {
-        onAtualizarUsuario(usuarioAtualizado);
-      }
-      
-      // Salvar no AsyncStorage
-      await AsyncStorage.setItem('usuario', JSON.stringify(usuarioAtualizado));
-      
       Alert.alert('Sucesso', `Método ${metodo.toUpperCase()} definido como padrão!`);
     } catch (error) {
       console.error('Erro ao salvar método:', error);

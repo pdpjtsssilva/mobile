@@ -17,10 +17,10 @@ function PassageiroStack({ onLogin }) {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="Login">
-        {(props) => <LoginScreen {...props} onLogin={onLogin} />}
+        {(props) => <LoginScreen {...props} onLogin={onLogin} tipoEsperado="passageiro" />}
       </Stack.Screen>
       <Stack.Screen name="Cadastro">
-        {(props) => <CadastroScreen {...props} onLogin={onLogin} />}
+        {(props) => <CadastroScreen {...props} onLogin={onLogin} tipoCadastro="passageiro" />}
       </Stack.Screen>
     </Stack.Navigator>
   );
@@ -30,7 +30,7 @@ function MotoristaStack({ onLogin }) {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="LoginMotorista">
-        {(props) => <LoginScreen {...props} onLogin={onLogin} cadastroRoute="CadastroMotorista" />}
+        {(props) => <LoginScreen {...props} onLogin={onLogin} cadastroRoute="CadastroMotorista" tipoEsperado="motorista" />}
       </Stack.Screen>
       <Stack.Screen name="CadastroMotorista">
         {(props) => <CadastroScreen {...props} onLogin={onLogin} tipoCadastro="motorista" />}
@@ -95,15 +95,15 @@ export default function App() {
   };
 
   const handleLoginPassageiro = async (dadosUsuario) => {
-    const user = { ...dadosUsuario, tipo: 'passageiro' };
-    setUsuario(user);
-    await AsyncStorage.setItem('usuario', JSON.stringify(user));
+    // CORRIGIDO: Não força o tipo, usa o que vem do backend
+    setUsuario(dadosUsuario);
+    await AsyncStorage.setItem('usuario', JSON.stringify(dadosUsuario));
   };
 
   const handleLoginMotorista = async (dadosUsuario) => {
-    const user = { ...dadosUsuario, tipo: 'motorista' };
-    setUsuario(user);
-    await AsyncStorage.setItem('usuario', JSON.stringify(user));
+    // CORRIGIDO: Não força o tipo, usa o que vem do backend
+    setUsuario(dadosUsuario);
+    await AsyncStorage.setItem('usuario', JSON.stringify(dadosUsuario));
   };
 
   const handleLogout = async () => {
@@ -147,7 +147,7 @@ export default function App() {
     return (
       <View style={styles.container}>
         <View style={styles.escolhaBox}>
-          <Text style={styles.logo}></Text>
+          <Text style={styles.logo}>🚕</Text>
           <Text style={styles.titulo}>L'europe App</Text>
           <Text style={styles.subtitulo}>Escolha como deseja usar o app</Text>
 

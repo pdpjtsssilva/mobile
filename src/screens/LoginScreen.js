@@ -51,7 +51,7 @@ export default function LoginScreen({ navigation, onLogin, cadastroRoute }) {
     >
       <View style={styles.content}>
         <Text style={styles.logo}>🚕</Text>
-        <Text style={styles.title}>l'Europe app</Text>
+        <Text style={styles.title}>Uber Clone</Text>
         <Text style={styles.subtitle}>Faça login para continuar</Text>
 
         <TextInput

@@ -1,24 +1,17 @@
-import React, { useEffect, useRef, useState, useMemo } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Alert, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, Image, ActivityIndicator, Linking } from 'react-native';
+import MapView, { Marker, Polyline } from 'react-native-maps';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
-import * as Speech from 'expo-speech';
 import websocketService from '../services/websocket';
 import axios from 'axios';
-import { API_URL, GOOGLE_MAPS_API_KEY, MAPBOX_STYLE_URL } from '../config';
+import { API_URL } from '../config';
 import HistoricoScreen from './HistoricoScreen';
 import PerfilScreen from './PerfilScreen';
-import Constants from 'expo-constants';
-import MapboxGL from '../mapbox';
 
 export default function MotoristaScreen({ usuario, onLogout }) {
   const BASE_URL = API_URL.replace(/\/api$/, '');
   const [location, setLocation] = useState(null);
-  const [locationError, setLocationError] = useState('');
-  const [mapboxError, setMapboxError] = useState('');
-  const [mapboxStyleLoaded, setMapboxStyleLoaded] = useState(false);
-  const [navSteps, setNavSteps] = useState([]);
-  const [navStepIndex, setNavStepIndex] = useState(-1);
   const [online, setOnline] = useState(false);
   const [mostrarMenu, setMostrarMenu] = useState(false);
   const [mostrarCarteira, setMostrarCarteira] = useState(false);
@@ -43,11 +36,6 @@ export default function MotoristaScreen({ usuario, onLogout }) {
   const [carroEditando, setCarroEditando] = useState(null);
   const [mostrarFormCarro, setMostrarFormCarro] = useState(false);
   const [rotaMotorista, setRotaMotorista] = useState([]);
-  const [navMode, setNavMode] = useState(false);
-  const [heading, setHeading] = useState(0);
-  const [fotoSeguroUri, setFotoSeguroUri] = useState(null);
-  const [fotoInspecaoUri, setFotoInspecaoUri] = useState(null);
-  const [fotoLicenciamentoUri, setFotoLicenciamentoUri] = useState(null);
   const [formCarro, setFormCarro] = useState({
     marca: '',
     modelo: '',
@@ -62,205 +50,15 @@ export default function MotoristaScreen({ usuario, onLogout }) {
     licenciamentoValidade: '',
   });
 
-  const limparEstadoCorrida = () => {
-    setSolicitacao(null);
-    setCorridaConfirmada(null);
-    setRotaMotorista([]);
-  };
-
-  const getDirectionsKey = () =>
-    GOOGLE_MAPS_API_KEY ||
-    Constants?.expoConfig?.android?.config?.googleMaps?.apiKey ||
-    Constants?.manifest?.android?.config?.googleMaps?.apiKey ||
-    '';
-
-  const buscarRotaGoogle = async (origem, dest) => {
-    const apiKey = getDirectionsKey();
-    if (!apiKey) return null;
-    const origemStr = `${origem.latitude},${origem.longitude}`;
-    const destStr = `${dest.latitude},${dest.longitude}`;
-    const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${encodeURIComponent(origemStr)}&destination=${encodeURIComponent(destStr)}&key=${apiKey}`;
-    const response = await axios.get(url);
-    const route = response.data?.routes?.[0];
-    if (!route?.overview_polyline?.points) return null;
-    return decodePolyline(route.overview_polyline.points);
-  };
-
-  const loadImagePicker = async () => {
-    try {
-      const picker = await import('expo-image-picker');
-      if (!picker?.requestMediaLibraryPermissionsAsync) return null;
-      return picker;
-    } catch (error) {
-      return null;
-    }
-  };
-
   const mapRef = useRef(null);
-  const cameraRef = useRef(null);
   const motoristaIdRef = useRef(usuario?.id || `motorista_${Date.now()}`);
   const locationRef = useRef(null);
   const onlineRef = useRef(false);
-  const solicitacaoRef = useRef(null);
-  const corridaConfirmadaRef = useRef(null);
-  const pollingRef = useRef(null);
-  const locationWatchRef = useRef(null);
-  const lastRouteAtRef = useRef(0);
-  const lastNavKeyRef = useRef('');
-  const lastSpokenStepRef = useRef(-1);
-  const lastPreSpokenStepRef = useRef(-1);
-  const lastSpokenAtRef = useRef(0);
-  const manualCameraUntilRef = useRef(0);
-  const toLineString = (coords) => {
-    if (!Array.isArray(coords) || coords.length < 2) return null;
-    return {
-      type: 'Feature',
-      geometry: {
-        type: 'LineString',
-        coordinates: coords.map((p) => [p.longitude, p.latitude])
-      }
-    };
-  };
-  const getBoundsFromCoords = (coords) => {
-    if (!Array.isArray(coords) || coords.length < 2) return null;
-    let minLat = coords[0].latitude;
-    let maxLat = coords[0].latitude;
-    let minLng = coords[0].longitude;
-    let maxLng = coords[0].longitude;
-    coords.forEach((p) => {
-      minLat = Math.min(minLat, p.latitude);
-      maxLat = Math.max(maxLat, p.latitude);
-      minLng = Math.min(minLng, p.longitude);
-      maxLng = Math.max(maxLng, p.longitude);
-    });
-    return { ne: [maxLng, maxLat], sw: [minLng, minLat] };
-  };
-  const rotaMotoristaShape = useMemo(() => (Array.isArray(rotaMotorista) && rotaMotorista.length > 1 ? toLineString(rotaMotorista) : null), [rotaMotorista]);
-  const rotaBounds = useMemo(() => {
-    if (Array.isArray(rotaMotorista) && rotaMotorista.length > 1) return getBoundsFromCoords(rotaMotorista);
-    return null;
-  }, [rotaMotorista]);
-  const driverCoordinate = useMemo(() => {
-    if (!location) return null;
-    return [location.longitude, location.latitude];
-  }, [location]);
-
-  const getDestinoAtual = () => {
-    if (!corridaConfirmada) return null;
-    if (corridaConfirmada.status === 'em_andamento') {
-      if (corridaConfirmada.destino) return corridaConfirmada.destino;
-      if (corridaConfirmada.destinoLat && corridaConfirmada.destinoLng) {
-        return { latitude: corridaConfirmada.destinoLat, longitude: corridaConfirmada.destinoLng };
-      }
-    }
-    if (corridaConfirmada.origem) return corridaConfirmada.origem;
-    if (corridaConfirmada.origemLat && corridaConfirmada.origemLng) {
-      return { latitude: corridaConfirmada.origemLat, longitude: corridaConfirmada.origemLng };
-    }
-    return null;
-  };
-
-  const stripHtml = (value) => {
-    if (!value) return '';
-    return value.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
-  };
-
-  const distanceMeters = (a, b) => {
-    if (!a || !b) return 0;
-    const toRad = (deg) => (deg * Math.PI) / 180;
-    const R = 6371000;
-    const dLat = toRad(b.latitude - a.latitude);
-    const dLng = toRad(b.longitude - a.longitude);
-    const lat1 = toRad(a.latitude);
-    const lat2 = toRad(b.latitude);
-    const sinDLat = Math.sin(dLat / 2);
-    const sinDLng = Math.sin(dLng / 2);
-    const h = sinDLat * sinDLat + Math.cos(lat1) * Math.cos(lat2) * sinDLng * sinDLng;
-    return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
-  };
-
-  const speakText = (text) => {
-    if (!text) return;
-    Speech.stop();
-    Speech.speak(text, { language: 'pt-BR', rate: 0.95, pitch: 1.0 });
-    lastSpokenAtRef.current = Date.now();
-  };
-
-  const speakStep = (index, steps) => {
-    if (!Array.isArray(steps) || index < 0 || index >= steps.length) return;
-    if (lastSpokenStepRef.current === index) return;
-    const instruction = steps[index]?.instruction;
-    if (!instruction) return;
-    lastSpokenStepRef.current = index;
-    speakText(instruction);
-  };
-
-  const speakPreStep = (index, steps) => {
-    if (!Array.isArray(steps) || index < 0 || index >= steps.length) return;
-    if (lastPreSpokenStepRef.current === index) return;
-    const instruction = steps[index]?.instruction;
-    if (!instruction) return;
-    lastPreSpokenStepRef.current = index;
-    speakText(`Em 100 metros, ${instruction}`);
-  };
-
-  const carregarInstrucoes = async (origem, destino) => {
-    const apiKey = getDirectionsKey();
-    if (!apiKey || !origem || !destino) return;
-    const origemStr = `${origem.latitude},${origem.longitude}`;
-    const destStr = `${destino.latitude},${destino.longitude}`;
-    const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${encodeURIComponent(origemStr)}&destination=${encodeURIComponent(destStr)}&key=${apiKey}&mode=driving&language=pt-PT`;
-    const response = await axios.get(url);
-    const steps = response.data?.routes?.[0]?.legs?.[0]?.steps || [];
-    const parsed = steps.map((step) => ({
-      instruction: stripHtml(step.html_instructions || ''),
-      distance: step.distance?.value || 0,
-      end: step.end_location ? { latitude: step.end_location.lat, longitude: step.end_location.lng } : null
-    })).filter((step) => step.instruction && step.end);
-    setNavSteps(parsed);
-    setNavStepIndex(parsed.length ? 0 : -1);
-    lastSpokenStepRef.current = -1;
-    if (parsed.length) {
-      speakText('Iniciando navegacao.');
-      speakStep(0, parsed);
-    }
-  };
-
-  const abrirNavegacao = async () => {
-    const destino = getDestinoAtual();
-    if (!destino) {
-      Alert.alert('Navegacao', 'Destino indisponivel.');
-      return;
-    }
-    setNavMode(true);
-    if (cameraRef.current && location) {
-      cameraRef.current.setCamera({
-        centerCoordinate: [location.longitude, location.latitude],
-        zoomLevel: 17,
-        pitch: 55,
-        heading,
-        animationDuration: 500
-      });
-    }
-  };
 
   useEffect(() => {
     obterLocalizacao();
     websocketService.connect();
-    websocketService.onNovaSolicitacao((data) => {
-      const recusados = Array.isArray(data?.recusados) ? data.recusados : [];
-      if (recusados.includes(motoristaIdRef.current)) return;
-      setSolicitacao(data);
-    });
-    websocketService.onCorridaCancelada((data) => {
-      const corridaId = data?.corridaId;
-      const solicitacaoId = solicitacaoRef.current?.corridaId;
-      const confirmadaId = corridaConfirmadaRef.current?.corridaId;
-      if (!corridaId || corridaId === solicitacaoId || corridaId === confirmadaId) {
-        limparEstadoCorrida();
-        Alert.alert('Corrida cancelada', 'O passageiro cancelou a corrida.');
-      }
-    });
+    websocketService.onNovaSolicitacao((data) => setSolicitacao(data));
     websocketService.onCorridaConfirmada((data) => {
       setCorridaConfirmada((prev) => ({
         ...prev,
@@ -288,230 +86,38 @@ export default function MotoristaScreen({ usuario, onLogout }) {
   }, []);
 
   useEffect(() => {
-    if (pollingRef.current) {
-      clearInterval(pollingRef.current);
-      pollingRef.current = null;
-    }
-    const corridaId = corridaConfirmada?.corridaId || solicitacao?.corridaId;
-    if (!corridaId) return;
-    pollingRef.current = setInterval(async () => {
-      try {
-        const resp = await axios.get(`${API_URL}/corridas/${corridaId}`);
-        const status = resp?.data?.status;
-        if (status === 'cancelada' || status === 'finalizada') {
-          limparEstadoCorrida();
-        }
-      } catch (error) {
-        // Silencioso para evitar spam.
-      }
-    }, 5000);
-    return () => {
-      if (pollingRef.current) {
-        clearInterval(pollingRef.current);
-        pollingRef.current = null;
-      }
-    };
-  }, [corridaConfirmada?.corridaId, solicitacao?.corridaId]);
-
-  useEffect(() => {
-    solicitacaoRef.current = solicitacao;
-  }, [solicitacao]);
-
-  useEffect(() => {
-    corridaConfirmadaRef.current = corridaConfirmada;
-  }, [corridaConfirmada]);
-
-  useEffect(() => {
-    if (!corridaConfirmada) {
-      setNavMode(false);
-      setNavSteps([]);
-      setNavStepIndex(-1);
-      lastNavKeyRef.current = '';
-      lastSpokenStepRef.current = -1;
-      lastPreSpokenStepRef.current = -1;
-      Speech.stop();
-      return;
-    }
-    const status = corridaConfirmada.status;
-    setNavMode(status === 'aceita' || status === 'chegou' || status === 'em_andamento');
-  }, [corridaConfirmada?.status, corridaConfirmada?.corridaId]);
-
-  const stopTracking = () => {
-    if (locationWatchRef.current) {
-      locationWatchRef.current.remove();
-      locationWatchRef.current = null;
-    }
-  };
-
-  const startTracking = async () => {
-    if (locationWatchRef.current) return;
-    const { status } = await Location.requestForegroundPermissionsAsync();
-    if (status !== 'granted') {
-      setLocationError('Permissao de localizacao negada');
-      return;
-    }
-    locationWatchRef.current = await Location.watchPositionAsync(
-      {
-        accuracy: Location.Accuracy.High,
-        timeInterval: 3000,
-        distanceInterval: 10
-      },
-      (loc) => {
-        const regiao = {
-          latitude: loc.coords.latitude,
-          longitude: loc.coords.longitude,
-          latitudeDelta: 0.01,
-          longitudeDelta: 0.01
-        };
-        if (typeof loc.coords.heading === 'number' && loc.coords.heading >= 0) {
-          setHeading(loc.coords.heading);
-        }
-        setLocation(regiao);
-        locationRef.current = regiao;
-        if (onlineRef.current) {
-          websocketService.atualizarPosicao({
-            motoristaId: motoristaIdRef.current,
-            corridaId: corridaConfirmadaRef.current?.corridaId,
-            latitude: regiao.latitude,
-            longitude: regiao.longitude,
-            localizacao: { latitude: regiao.latitude, longitude: regiao.longitude }
-          });
-        }
-        const destinoAtual = getDestinoAtual();
-        const now = Date.now();
-        if (destinoAtual && now - lastRouteAtRef.current > 5000) {
-          lastRouteAtRef.current = now;
-          calcularRotaMotorista(regiao, destinoAtual);
-        }
-        if (navMode && navSteps.length && navStepIndex >= 0) {
-          const currentStep = navSteps[navStepIndex];
-          const dist = currentStep?.end ? distanceMeters(regiao, currentStep.end) : null;
-          if (dist !== null && dist <= 200) {
-            speakPreStep(navStepIndex, navSteps);
-          }
-          if (dist !== null && dist <= 60) {
-            if (navStepIndex < navSteps.length - 1) {
-              const nextIndex = navStepIndex + 1;
-              setNavStepIndex(nextIndex);
-              speakStep(nextIndex, navSteps);
-            } else {
-              speakText('Voce chegou ao destino.');
-            }
-          }
-          if (Date.now() - lastSpokenAtRef.current > 25000) {
-            speakStep(navStepIndex, navSteps);
-          }
-        }
-      }
-    );
-  };
-
-  useEffect(() => {
     if (mostrarMeusCarros) {
       carregarCarros();
     }
   }, [mostrarMeusCarros]);
 
-  useEffect(() => {
-    if (online) {
-      startTracking();
-    } else {
-      stopTracking();
-    }
-    return () => stopTracking();
-  }, [online]);
-
-  useEffect(() => {
-    const destinoAtual = getDestinoAtual();
-    if (!location || !destinoAtual) {
-      setRotaMotorista([]);
-      return;
-    }
-    calcularRotaMotorista(location, destinoAtual);
-  }, [corridaConfirmada?.status, corridaConfirmada?.origemLat, corridaConfirmada?.origemLng, corridaConfirmada?.destinoLat, corridaConfirmada?.destinoLng, location]);
-
-  useEffect(() => {
-    if (!navMode || !location) return;
-    const destinoAtual = getDestinoAtual();
-    if (!destinoAtual) return;
-    const navKey = `${destinoAtual.latitude},${destinoAtual.longitude}`;
-    if (navKey === lastNavKeyRef.current) return;
-    lastNavKeyRef.current = navKey;
-    lastPreSpokenStepRef.current = -1;
-    carregarInstrucoes(location, destinoAtual);
-  }, [navMode, location?.latitude, location?.longitude, corridaConfirmada?.destinoLat, corridaConfirmada?.destinoLng, corridaConfirmada?.status]);
-
   // Centraliza o mapa na localização atual ao obtê-la
   useEffect(() => {
-    if (cameraRef.current && location) {
-      cameraRef.current.setCamera({
-        centerCoordinate: [location.longitude, location.latitude],
-        zoomLevel: navMode ? 17 : 16,
-        pitch: navMode ? 55 : 0,
-        heading: navMode ? heading : 0,
-        animationDuration: 500
-      });
+    if (mapRef.current && location) {
+      mapRef.current.animateToRegion(location, 500);
     }
-  }, [location, navMode, heading]);
+  }, [location]);
 
   const obterLocalizacao = async () => {
     const { status } = await Location.requestForegroundPermissionsAsync();
     if (status !== 'granted') {
-      setLocationError('Permissao de localizacao negada');
       Alert.alert('Permissao negada', 'Precisamos da localizacao');
       return;
     }
-    try {
-      const last = await Location.getLastKnownPositionAsync({});
-      if (last?.coords) {
-        const fallback = {
-          latitude: last.coords.latitude,
-          longitude: last.coords.longitude,
-          latitudeDelta: 0.01,
-          longitudeDelta: 0.01,
-        };
-        setLocation(fallback);
-        locationRef.current = fallback;
-      }
-      const loc = await Promise.race([
-        Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000))
-      ]);
-      const regiao = {
-        latitude: loc.coords.latitude,
-        longitude: loc.coords.longitude,
-        latitudeDelta: 0.01,
-        longitudeDelta: 0.01,
-      };
-      setLocation(regiao);
-      locationRef.current = regiao;
-      setLocationError('');
-    } catch (error) {
-      setLocationError('Falha ao obter localizacao');
-    }
+    const loc = await Location.getCurrentPositionAsync({});
+    const regiao = {
+      latitude: loc.coords.latitude,
+      longitude: loc.coords.longitude,
+      latitudeDelta: 0.01,
+      longitudeDelta: 0.01,
+    };
+    setLocation(regiao);
+    locationRef.current = regiao;
   };
 
+  // Upload de fotos desabilitado
   const escolherFotoDocumento = async (tipo) => {
-    const ImagePicker = await loadImagePicker();
-    if (!ImagePicker) {
-      Alert.alert('Erro', 'Recurso de imagens indisponivel neste build.');
-      return;
-    }
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permissao necessaria', 'Permita acesso as fotos para enviar os documentos do veiculo.');
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      allowsEditing: true,
-      aspect: [4, 3],
-      quality: 0.7,
-    });
-    if (result.canceled || !result.assets?.length) return;
-    const uri = result.assets[0].uri;
-    if (tipo === 'seguro') setFotoSeguroUri(uri);
-    if (tipo === 'inspecao') setFotoInspecaoUri(uri);
-    if (tipo === 'licenciamento') setFotoLicenciamentoUri(uri);
+    Alert.alert('Upload desabilitado', 'Funcionalidade de upload de documentos temporariamente desabilitada');
   };
 
   const parseSeguro = (texto) => {
@@ -609,26 +215,9 @@ export default function MotoristaScreen({ usuario, onLogout }) {
         destinoLng: destino.longitude
       });
       const coords = decodePolyline(response.data.polyline);
-      if (coords.length > 1) {
-        setRotaMotorista(coords);
-        return;
-      }
-      const rotaGoogle = await buscarRotaGoogle(origem, destino);
-      if (rotaGoogle?.length > 1) {
-        setRotaMotorista(rotaGoogle);
-        return;
-      }
+      setRotaMotorista(coords);
     } catch (error) {
       console.error('Erro ao calcular rota do motorista:', error);
-      try {
-        const rotaGoogle = await buscarRotaGoogle(origem, destino);
-        if (rotaGoogle?.length > 1) {
-          setRotaMotorista(rotaGoogle);
-          return;
-        }
-      } catch (googleError) {
-        // Ignore fallback error.
-      }
       setRotaMotorista([]);
     }
   };
@@ -650,21 +239,13 @@ export default function MotoristaScreen({ usuario, onLogout }) {
 
   // Ajusta zoom quando a rota do motorista é atualizada
   useEffect(() => {
-    if (!cameraRef.current || !rotaBounds) return;
-    if (navMode) return;
-    if (Date.now() < manualCameraUntilRef.current) return;
-    cameraRef.current.setCamera({
-      bounds: {
-        ne: rotaBounds.ne,
-        sw: rotaBounds.sw,
-        paddingTop: 80,
-        paddingBottom: 200,
-        paddingLeft: 30,
-        paddingRight: 30
-      },
-      animationDuration: 500
-    });
-  }, [rotaBounds, navMode]);
+    if (mapRef.current && rotaMotorista.length > 1) {
+      mapRef.current.fitToCoordinates(rotaMotorista, {
+        edgePadding: { top: 80, right: 40, bottom: 280, left: 40 },
+        animated: true,
+      });
+    }
+  }, [rotaMotorista]);
 
   const ficarOffline = () => {
     websocketService.motoristaOffline(motoristaIdRef.current);
@@ -726,7 +307,6 @@ export default function MotoristaScreen({ usuario, onLogout }) {
       motoristaId: motoristaIdRef.current,
     });
     setCorridaConfirmada((prev) => (prev ? { ...prev, status: 'em_andamento' } : prev));
-    abrirNavegacao();
   };
 
   const finalizarCorrida = () => {
@@ -792,9 +372,6 @@ export default function MotoristaScreen({ usuario, onLogout }) {
       licenciamentoData: '',
       licenciamentoValidade: '',
     });
-    setFotoSeguroUri(null);
-    setFotoInspecaoUri(null);
-    setFotoLicenciamentoUri(null);
     setMostrarFormCarro(true);
   };
 
@@ -813,9 +390,6 @@ export default function MotoristaScreen({ usuario, onLogout }) {
       licenciamentoData: parseLicenciamento(carro.licenciamento).data || '',
       licenciamentoValidade: parseLicenciamento(carro.licenciamento).validade || '',
     });
-    setFotoSeguroUri(carro.fotoSeguro || null);
-    setFotoInspecaoUri(carro.fotoInspecao || null);
-    setFotoLicenciamentoUri(carro.fotoLicenciamento || null);
     setMostrarFormCarro(true);
   };
 
@@ -843,15 +417,6 @@ export default function MotoristaScreen({ usuario, onLogout }) {
       if (seguroStr) formData.append('seguro', seguroStr);
       if (inspecaoStr) formData.append('inspecao', inspecaoStr);
       if (licenciamentoStr) formData.append('licenciamento', licenciamentoStr);
-      if (fotoSeguroUri && !fotoSeguroUri.startsWith('http')) {
-        formData.append('fotoSeguro', { uri: fotoSeguroUri, name: 'seguro.jpg', type: 'image/jpeg' });
-      }
-      if (fotoInspecaoUri && !fotoInspecaoUri.startsWith('http')) {
-        formData.append('fotoInspecao', { uri: fotoInspecaoUri, name: 'inspecao.jpg', type: 'image/jpeg' });
-      }
-      if (fotoLicenciamentoUri && !fotoLicenciamentoUri.startsWith('http')) {
-        formData.append('fotoLicenciamento', { uri: fotoLicenciamentoUri, name: 'licenciamento.jpg', type: 'image/jpeg' });
-      }
 
       if (carroEditando) {
         const res = await axios.put(
@@ -911,15 +476,16 @@ export default function MotoristaScreen({ usuario, onLogout }) {
   };
 
   const centralizarMapa = () => {
-    if (cameraRef.current && location) {
-      manualCameraUntilRef.current = Date.now() + 5000;
-      cameraRef.current.setCamera({
-        centerCoordinate: [location.longitude, location.latitude],
-        zoomLevel: navMode ? 17 : 17,
-        pitch: navMode ? 55 : 0,
-        heading: navMode ? heading : 0,
-        animationDuration: 500
-      });
+    if (mapRef.current && location) {
+      mapRef.current.animateToRegion(
+        {
+          latitude: location.latitude,
+          longitude: location.longitude,
+          latitudeDelta: 0.01,
+          longitudeDelta: 0.01,
+        },
+        500
+      );
     }
   };
 
@@ -971,70 +537,39 @@ export default function MotoristaScreen({ usuario, onLogout }) {
   if (!location) {
     return (
       <View style={styles.loading}>
-        <Text>{locationError || 'Carregando mapa...'}</Text>
-        <TouchableOpacity style={styles.retryButton} onPress={obterLocalizacao}>
-          <Text style={styles.retryButtonText}>Tentar novamente</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.retryButton}
-          onPress={() => Linking.openSettings()}
-        >
-          <Text style={styles.retryButtonText}>Abrir configuracoes</Text>
-        </TouchableOpacity>
+        <Text>Carregando mapa...</Text>
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
-      <MapboxGL.MapView
+      <MapView
         style={styles.map}
+        initialRegion={location}
         ref={mapRef}
-        styleURL={navMode ? MapboxGL.StyleURL.TrafficDay : MAPBOX_STYLE_URL}
-        logoEnabled={false}
-        compassEnabled={false}
+        showsMyLocationButton={false}
+        showsUserLocation={true}
+        toolbarEnabled={false}
+        showsCompass={false}
+        myLocationButtonEnabled={false}
+        zoomControlEnabled={false}
+        provider={MapView.PROVIDER_GOOGLE}
         rotateEnabled={false}
-        onDidFinishLoadingStyle={() => setMapboxStyleLoaded(true)}
-        onDidFailLoadingStyle={(event) => {
-          const message = event?.message || event?.nativeEvent?.message || 'Falha ao carregar estilo do mapa';
-          setMapboxError(message);
-        }}
-        onDidFailLoadingMap={(event) => {
-          const message = event?.message || event?.nativeEvent?.message || 'Falha ao carregar mapa';
-          setMapboxError(message);
-        }}
       >
-        <MapboxGL.Camera
-          ref={cameraRef}
-          centerCoordinate={[location.longitude, location.latitude]}
-          zoomLevel={navMode ? 17 : 16}
-          pitch={navMode ? 55 : 0}
-          heading={navMode ? heading : 0}
-          animationDuration={500}
-        />
-        <MapboxGL.LocationPuck visible={false} />
-        {driverCoordinate && (
-          <MapboxGL.PointAnnotation
-            key={`driver-${online ? 'online' : 'offline'}`}
-            id="driver"
-            coordinate={driverCoordinate}
-          >
-            <View style={[styles.carPinDriver, online ? styles.carPinDriverOnline : styles.carPinDriverOffline]}>
-              <MaterialCommunityIcons name="car" size={18} color="#fff" />
-            </View>
-          </MapboxGL.PointAnnotation>
+        <Marker
+          key={online ? 'driver-online' : 'driver-offline'}
+          coordinate={location}
+          tracksViewChanges={true}
+        >
+          <View style={[styles.carPin, online ? styles.carPinOnline : styles.carPinOffline]}>
+            <MaterialCommunityIcons name="car" size={20} color="#fff" />
+          </View>
+        </Marker>
+        {rotaMotorista.length > 0 && (
+          <Polyline coordinates={rotaMotorista} strokeWidth={4} strokeColor="#0ea5e9" />
         )}
-        {rotaMotoristaShape && (
-          <MapboxGL.ShapeSource id="rotaMotorista" shape={rotaMotoristaShape}>
-            <MapboxGL.LineLayer id="rotaMotoristaLine" style={{ lineColor: '#0ea5e9', lineWidth: 4 }} />
-          </MapboxGL.ShapeSource>
-        )}
-      </MapboxGL.MapView>
-      {mapboxError ? (
-        <View style={styles.mapboxError}>
-          <Text style={styles.mapboxErrorText}>Mapa: {mapboxError}</Text>
-        </View>
-      ) : null}
+      </MapView>
 
       <TouchableOpacity style={styles.menuButton} onPress={() => setMostrarMenu(true)}>
         <View style={styles.menuLine} />
@@ -1071,7 +606,7 @@ export default function MotoristaScreen({ usuario, onLogout }) {
       {corridaConfirmada && (
         corridaConfirmada.status === 'em_andamento' ? (
           <View style={[styles.corridaCard, styles.corridaCardSlim]}>
-            <TouchableOpacity style={[styles.btnAceitar, styles.btnFull]} onPress={finalizarCorrida}>
+            <TouchableOpacity style={[styles.btnAceitar, { flex: 1 }]} onPress={finalizarCorrida}>
               <Text style={styles.btnText}>Finalizar</Text>
             </TouchableOpacity>
           </View>
@@ -1354,23 +889,17 @@ export default function MotoristaScreen({ usuario, onLogout }) {
               <TextInput style={styles.input} placeholder="N° da apolice" value={formCarro.apolice} onChangeText={(text) => setFormCarro({ ...formCarro, apolice: text })} />
               <TextInput style={styles.input} placeholder="Validade (Seguro)" value={formCarro.seguroValidade} onChangeText={(text) => setFormCarro({ ...formCarro, seguroValidade: text })} />
               <TouchableOpacity style={styles.uploadBtn} onPress={() => escolherFotoDocumento('seguro')}>
-                <Text style={styles.uploadBtnText}>{fotoSeguroUri ? 'Trocar foto do seguro' : 'Anexar foto do seguro'}</Text>
-                {fotoSeguroUri && <Image source={{ uri: fotoSeguroUri }} style={styles.uploadPreview} />}
               </TouchableOpacity>
 
               <Text style={styles.label}>Inspecao</Text>
               <TextInput style={styles.input} placeholder="Validade (Inspecao)" value={formCarro.inspecaoValidade} onChangeText={(text) => setFormCarro({ ...formCarro, inspecaoValidade: text })} />
               <TouchableOpacity style={styles.uploadBtn} onPress={() => escolherFotoDocumento('inspecao')}>
-                <Text style={styles.uploadBtnText}>{fotoInspecaoUri ? 'Trocar foto da inspecao' : 'Anexar foto da inspecao'}</Text>
-                {fotoInspecaoUri && <Image source={{ uri: fotoInspecaoUri }} style={styles.uploadPreview} />}
               </TouchableOpacity>
 
               <Text style={styles.label}>Licenciamento</Text>
               <TextInput style={styles.input} placeholder="Data" value={formCarro.licenciamentoData} onChangeText={(text) => setFormCarro({ ...formCarro, licenciamentoData: text })} />
               <TextInput style={styles.input} placeholder="Validade (Licenciamento)" value={formCarro.licenciamentoValidade} onChangeText={(text) => setFormCarro({ ...formCarro, licenciamentoValidade: text })} />
               <TouchableOpacity style={styles.uploadBtn} onPress={() => escolherFotoDocumento('licenciamento')}>
-                <Text style={styles.uploadBtnText}>{fotoLicenciamentoUri ? 'Trocar foto do licenciamento' : 'Anexar foto do licenciamento'}</Text>
-                {fotoLicenciamentoUri && <Image source={{ uri: fotoLicenciamentoUri }} style={styles.uploadPreview} />}
               </TouchableOpacity>
             </ScrollView>
             <View style={styles.modalBotoes}>
@@ -1422,30 +951,25 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   map: { flex: 1 },
   loading: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  retryButton: { marginTop: 12, backgroundColor: '#0ea5e9', paddingVertical: 10, paddingHorizontal: 16, borderRadius: 8 },
-  retryButtonText: { color: 'white', fontWeight: '700' },
   menuButton: { position: 'absolute', top: 50, left: 20, zIndex: 999, backgroundColor: 'white', padding: 10, borderRadius: 12, elevation: 4 },
-  mapboxError: { position: 'absolute', top: 110, left: 20, right: 20, backgroundColor: '#fee2e2', padding: 12, borderRadius: 10, borderWidth: 1, borderColor: '#fecaca', zIndex: 999 },
-  mapboxErrorText: { color: '#991b1b', fontSize: 12, fontWeight: '700' },
   menuLine: { width: 22, height: 2, backgroundColor: '#0f172a', marginVertical: 2 },
   statusBadge: { position: 'absolute', top: 55, right: 20, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, zIndex: 999 },
   online: { backgroundColor: '#10b981' },
   offline: { backgroundColor: '#ef4444' },
   statusText: { color: '#fff', fontSize: 12 },
 
-  bottomButton: { position: 'absolute', bottom: 48, left: 16, right: 16 },
-  btnOnline: { backgroundColor: '#10b981', paddingVertical: 12, borderRadius: 10, alignItems: 'center' },
-  btnOffline: { backgroundColor: '#ef4444', paddingVertical: 12, borderRadius: 10, alignItems: 'center' },
+  bottomButton: { position: 'absolute', bottom: 30, left: 20, right: 20 },
+  btnOnline: { backgroundColor: '#10b981', padding: 16, borderRadius: 10, alignItems: 'center' },
+  btnOffline: { backgroundColor: '#ef4444', padding: 16, borderRadius: 10, alignItems: 'center' },
   btnText: { color: '#fff', fontWeight: 'bold' },
 
-  corridaCard: { position: 'absolute', bottom: 78, left: 16, right: 16, backgroundColor: '#fff', borderRadius: 10, padding: 10, elevation: 5 },
-  corridaCardSlim: { paddingVertical: 8, paddingHorizontal: 10 },
-  corridaTitulo: { fontSize: 13, fontWeight: '700', marginBottom: 4 },
-  corridaLinha: { fontSize: 11, color: '#334155', marginBottom: 2 },
-  corridaAcoes: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 6 },
-  btnAceitar: { flexBasis: '48%', backgroundColor: '#10b981', paddingVertical: 8, borderRadius: 10, alignItems: 'center' },
-  btnRecusar: { flexBasis: '48%', backgroundColor: '#ef4444', paddingVertical: 8, borderRadius: 10, alignItems: 'center' },
-  btnFull: { flexBasis: '100%' },
+  corridaCard: { position: 'absolute', bottom: 120, left: 20, right: 20, backgroundColor: '#fff', borderRadius: 12, padding: 16, elevation: 5 },
+  corridaCardSlim: { paddingVertical: 12, paddingHorizontal: 16 },
+  corridaTitulo: { fontSize: 16, fontWeight: '700', marginBottom: 6 },
+  corridaLinha: { fontSize: 14, color: '#334155', marginBottom: 4 },
+  corridaAcoes: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 10 },
+  btnAceitar: { flex: 1, backgroundColor: '#10b981', padding: 12, borderRadius: 10, alignItems: 'center', marginLeft: 6 },
+  btnRecusar: { flex: 1, backgroundColor: '#ef4444', padding: 12, borderRadius: 10, alignItems: 'center', marginRight: 6 },
 
   menuOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', flexDirection: 'row', justifyContent: 'flex-start' },
   drawer: { width: '75%', backgroundColor: '#0f172a', paddingTop: 60, paddingHorizontal: 20 },
@@ -1464,7 +988,7 @@ const styles = StyleSheet.create({
   drawerFooterText: { color: '#cbd5e1', fontSize: 12 },
   drawerFooterCode: { color: '#38bdf8', fontSize: 14, fontWeight: '700', marginBottom: 4 },
 
-  botaoCentralizar: { position: 'absolute', bottom: 110, right: 20, width: 54, height: 54, borderRadius: 27, backgroundColor: 'white', justifyContent: 'center', alignItems: 'center', elevation: 7, borderWidth: 1, borderColor: '#e2e8f0', zIndex: 999 },
+  botaoCentralizar: { position: 'absolute', bottom: 90, right: 20, width: 54, height: 54, borderRadius: 27, backgroundColor: 'white', justifyContent: 'center', alignItems: 'center', elevation: 7, borderWidth: 1, borderColor: '#e2e8f0', zIndex: 999 },
   botaoCentralizarText: { fontSize: 22, color: '#0f172a', fontWeight: '700' },
 
   carteiraContainer: { flex: 1, paddingTop: 60, paddingHorizontal: 20, backgroundColor: '#f8fafc' },
@@ -1525,10 +1049,7 @@ const styles = StyleSheet.create({
   uploadBtn: { backgroundColor: '#e2e8f0', paddingVertical: 10, paddingHorizontal: 12, borderRadius: 8, marginBottom: 12 },
   uploadBtnText: { color: '#0f172a', fontWeight: '700', marginBottom: 6 },
   uploadPreview: { width: '100%', height: 160, borderRadius: 8, backgroundColor: '#cbd5e1' },
-  carPin: { width: 38, height: 38, borderRadius: 19, justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: '#ffffff', elevation: 6 },
+  carPin: { width: 30, height: 30, borderRadius: 15, justifyContent: 'center', alignItems: 'center' },
   carPinOnline: { backgroundColor: '#22c55e' },
-  carPinOffline: { backgroundColor: '#0f172a' },
-  carPinDriver: { width: 34, height: 34, borderRadius: 17, justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: '#ffffff', elevation: 6 },
-  carPinDriverOnline: { backgroundColor: '#22c55e' },
-  carPinDriverOffline: { backgroundColor: '#94a3b8' }
+  carPinOffline: { backgroundColor: '#0f172a' }
 });
